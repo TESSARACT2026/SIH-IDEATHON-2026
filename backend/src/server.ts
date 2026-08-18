@@ -71,8 +71,10 @@ import favoritesRouter from './modules/favorites/index.js';
 import tripsRouter from './modules/trips/index.js';
 import servicesRouter from './modules/services/index.js';
 import analyticsRouter from './modules/analytics/index.js';
+import { requireAuth } from './shared/middleware/auth.js';
 
 // ─── API v1 Routes ──────────────────────────────────────────────────────────
+app.use('/api/v1', requireAuth);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/knowledge', knowledgeRouter);
 app.use('/api/v1/attractions', attractionsRouter);
