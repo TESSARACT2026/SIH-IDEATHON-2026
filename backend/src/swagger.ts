@@ -1,0 +1,479 @@
+export const openApiDocument = {
+  openapi: '3.1.0',
+  info: {
+    title: 'Travel Assistant API',
+    version: '1.0.0',
+    description: 'Backend API for destinations, live travel data, trip planning, saved trips, and trust signals.',
+  },
+  servers: [{ url: '/' }],
+  tags: [
+    { name: 'Health' },
+    { name: 'Users' },
+    { name: 'Knowledge' },
+    { name: 'Attractions' },
+    { name: 'Live Data' },
+    { name: 'Planner' },
+    { name: 'NLU' },
+    { name: 'Feedback' },
+    { name: 'Favorites' },
+    { name: 'Trips' },
+    { name: 'Services' },
+    { name: 'Analytics' },
+  ],
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Supabase access token.',
+      },
+    },
+    schemas: {
+      ApiResponse: {
+        type: 'object',
+        properties: { data: {} },
+      },
+      ApiError: {
+        type: 'object',
+        properties: {
+          error: {
+            type: 'object',
+            properties: {
+              code: { type: 'string' },
+              message: { type: 'string' },
+              details: {},
+            },
+            required: ['code', 'message'],
+          },
+        },
+        required: ['error'],
+      },
+      UserProfileUpdate: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          name: { type: 'string', minLength: 1, maxLength: 100 },
+          preferredLanguage: { type: 'string', enum: ['en', 'hi', 'or'] },
+          emergencyContactName: { type: 'string', maxLength: 100 },
+          emergencyContactPhone: { type: 'string', maxLength: 20 },
+        },
+      },
+      UserPreferences: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          budgetBand: { type: 'string', enum: ['BUDGET', 'MODERATE', 'PREMIUM'] },
+          pace: { type: 'string', enum: ['RELAXED', 'MODERATE', 'PACKED'] },
+          groupType: { type: 'string', enum: ['SOLO', 'COUPLE', 'FAMILY', 'GROUP'] },
+          interests: { type: 'array', items: { type: 'string', maxLength: 100 }, maxItems: 20 },
+          foodPreferences: { type: 'array', items: { type: 'string', maxLength: 100 }, maxItems: 20 },
+          transportPreference: { type: 'string', enum: ['WALKING', 'PUBLIC_TRANSIT', 'CAB', 'OWN_VEHICLE', 'MIXED'] },
+          accessibilityMobility: { type: 'boolean' },
+          accessibilityVision: { type: 'boolean' },
+          accessibilityHearing: { type: 'boolean' },
+          accessibilityCognitive: { type: 'boolean' },
+          accessibilityNotes: { type: 'string', maxLength: 500 },
+          walkingToleranceMinutes: { type: 'integer', minimum: 5, maximum: 240 },
+          indoorOutdoorPreference: { type: 'string', enum: ['indoor', 'outdoor', 'mixed'] },
+          localBusinessPreference: { type: 'boolean' },
+        },
+      },
+      PlannerRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['destinationId', 'startDate', 'days', 'preferences'],
+        properties: {
+          destinationId: { type: 'string', minLength: 1, maxLength: 100 },
+          startDate: { type: 'string', format: 'date-time' },
+          endDate: { type: 'string', format: 'date-time' },
+          days: { type: 'integer', minimum: 1, maximum: 14 },
+          preferences: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              pace: { type: 'string', enum: ['RELAXED', 'MODERATE', 'PACKED'], default: 'MODERATE' },
+              accessibilityWheelchair: { type: 'boolean', default: false },
+              accessibilityVision: { type: 'boolean', default: false },
+              accessibilityHearing: { type: 'boolean', default: false },
+              accessibilityCognitive: { type: 'boolean', default: false },
+              interests: { type: 'array', items: { type: 'string', maxLength: 50 }, maxItems: 20, default: [] },
+              transportPreference: { type: 'string', enum: ['WALKING', 'PUBLIC_TRANSIT', 'CAB', 'OWN_VEHICLE', 'MIXED'], default: 'MIXED' },
+              groupType: { type: 'string', enum: ['SOLO', 'COUPLE', 'FAMILY', 'GROUP'], default: 'SOLO' },
+              walkingToleranceMinutes: { type: 'integer', minimum: 5, maximum: 240, default: 30 },
+              indoorOutdoorPreference: { type: 'string', enum: ['indoor', 'outdoor', 'mixed'], default: 'mixed' },
+              localBusinessPreference: { type: 'boolean', default: false },
+            },
+          },
+        },
+      },
+      NluExtractRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['prompt'],
+        properties: { prompt: { type: 'string', minLength: 5, maxLength: 1000 } },
+      },
+      NluNarrateRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['itinerary', 'validFactIds'],
+        properties: {
+          itinerary: {
+            type: 'array',
+            maxItems: 20,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['attractionName', 'startTime', 'endTime'],
+              properties: {
+                attractionName: { type: 'string', maxLength: 200 },
+                startTime: { type: 'string' },
+                endTime: { type: 'string' },
+                factId: { type: 'string' },
+                description: { type: 'string', maxLength: 1000 },
+              },
+            },
+          },
+          validFactIds: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 100 },
+        },
+      },
+      FeedbackRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['entityId', 'entityType', 'feedbackType'],
+        properties: {
+          entityId: { type: 'string', minLength: 1, maxLength: 100 },
+          entityType: { type: 'string', enum: ['ATTRACTION', 'FACT', 'CROWD_RECORD'] },
+          feedbackType: { type: 'string', enum: ['INACCURATE', 'OUTDATED', 'OTHER'] },
+          comment: { type: 'string', maxLength: 500 },
+        },
+      },
+      FavoriteRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['attractionId'],
+        properties: { attractionId: { type: 'string', minLength: 1, maxLength: 100 } },
+      },
+      TripCreateRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['destinationId', 'startDate', 'endDate'],
+        properties: {
+          destinationId: { type: 'string', minLength: 1, maxLength: 100 },
+          title: { type: 'string', minLength: 1, maxLength: 200, default: 'My Trip' },
+          startDate: { type: 'string', format: 'date-time' },
+          endDate: { type: 'string', format: 'date-time' },
+          status: { type: 'string', enum: ['DRAFT', 'PLANNED', 'ACTIVE', 'COMPLETED'], default: 'DRAFT' },
+        },
+      },
+      TripUpdateRequest: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          title: { type: 'string', minLength: 1, maxLength: 200 },
+          startDate: { type: 'string', format: 'date-time' },
+          endDate: { type: 'string', format: 'date-time' },
+          status: { type: 'string', enum: ['DRAFT', 'PLANNED', 'ACTIVE', 'COMPLETED'] },
+          isPublic: { type: 'boolean' },
+        },
+      },
+      TripSnapshotRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['itinerarySnapshot'],
+        properties: { itinerarySnapshot: { type: 'object', additionalProperties: true } },
+      },
+    },
+    responses: {
+      Ok: {
+        description: 'Successful response.',
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+      },
+      Created: {
+        description: 'Created.',
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } },
+      },
+      BadRequest: {
+        description: 'Validation error.',
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiError' } } },
+      },
+      Unauthorized: {
+        description: 'Missing or invalid bearer token.',
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiError' } } },
+      },
+      NotFound: {
+        description: 'Resource not found.',
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiError' } } },
+      },
+    },
+  },
+  security: [{ bearerAuth: [] }],
+  paths: {
+    '/api/health': {
+      get: {
+        tags: ['Health'],
+        summary: 'Health check',
+        security: [],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '503': { $ref: '#/components/responses/Ok' } },
+      },
+    },
+    '/api/v1/users/me': {
+      get: { tags: ['Users'], summary: 'Current user profile', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
+      patch: {
+        tags: ['Users'],
+        summary: 'Update profile fields',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/UserProfileUpdate' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
+      },
+    },
+    '/api/v1/users/me/preferences': {
+      get: { tags: ['Users'], summary: 'Current user preferences', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
+      put: {
+        tags: ['Users'],
+        summary: 'Upsert full preferences',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/UserPreferences' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
+      },
+      patch: {
+        tags: ['Users'],
+        summary: 'Partially update preferences',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/UserPreferences' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
+      },
+    },
+    '/api/v1/knowledge/destinations': {
+      get: {
+        tags: ['Knowledge'],
+        summary: 'List destinations',
+        parameters: [
+          { name: 'region', in: 'query', schema: { type: 'string' } },
+          { name: 'country', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } },
+      },
+    },
+    '/api/v1/knowledge/destinations/{id}': {
+      get: {
+        tags: ['Knowledge'],
+        summary: 'Get one destination',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/knowledge/destinations/{id}/attractions': {
+      get: {
+        tags: ['Knowledge'],
+        summary: 'List destination attractions',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          { name: 'categories', in: 'query', schema: { type: 'string' }, description: 'Comma-separated category list.' },
+          { name: 'accessibilityWheelchair', in: 'query', schema: { type: 'string', enum: ['true', 'false'] } },
+          { name: 'indoorOutdoor', in: 'query', schema: { type: 'string', enum: ['indoor', 'outdoor', 'mixed'] } },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 100 } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/attractions/{id}/facts': {
+      get: {
+        tags: ['Attractions'],
+        summary: 'Get attraction fact provenance',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/attractions/{id}/alternatives': {
+      get: {
+        tags: ['Attractions'],
+        summary: 'Suggest similar attractions',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/live/weather': {
+      get: {
+        tags: ['Live Data'],
+        summary: 'Current weather',
+        parameters: [
+          { name: 'lat', in: 'query', required: true, schema: { type: 'number', minimum: -90, maximum: 90 } },
+          { name: 'lon', in: 'query', required: true, schema: { type: 'number', minimum: -180, maximum: 180 } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
+      },
+    },
+    '/api/v1/live/route': {
+      get: {
+        tags: ['Live Data'],
+        summary: 'Distance and duration',
+        parameters: [
+          { name: 'startLat', in: 'query', required: true, schema: { type: 'number', minimum: -90, maximum: 90 } },
+          { name: 'startLon', in: 'query', required: true, schema: { type: 'number', minimum: -180, maximum: 180 } },
+          { name: 'endLat', in: 'query', required: true, schema: { type: 'number', minimum: -90, maximum: 90 } },
+          { name: 'endLon', in: 'query', required: true, schema: { type: 'number', minimum: -180, maximum: 180 } },
+          { name: 'profile', in: 'query', schema: { type: 'string', enum: ['driving-car', 'foot-walking'], default: 'driving-car' } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
+      },
+    },
+    '/api/v1/planner/generate': {
+      post: {
+        tags: ['Planner'],
+        summary: 'Generate an itinerary',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/PlannerRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
+      },
+    },
+    '/api/v1/nlu/extract': {
+      post: {
+        tags: ['NLU'],
+        summary: 'Extract trip preferences from text',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NluExtractRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
+      },
+    },
+    '/api/v1/nlu/narrate': {
+      post: {
+        tags: ['NLU'],
+        summary: 'Generate itinerary narration',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NluNarrateRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
+      },
+    },
+    '/api/v1/feedback': {
+      post: {
+        tags: ['Feedback'],
+        summary: 'Queue feedback for review',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedbackRequest' } } } },
+        responses: { '201': { $ref: '#/components/responses/Created' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
+      },
+    },
+    '/api/v1/favorites': {
+      get: { tags: ['Favorites'], summary: 'List saved attractions', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
+      post: {
+        tags: ['Favorites'],
+        summary: 'Add attraction favorite',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/FavoriteRequest' } } } },
+        responses: { '201': { $ref: '#/components/responses/Created' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
+      },
+    },
+    '/api/v1/favorites/{attractionId}': {
+      delete: {
+        tags: ['Favorites'],
+        summary: 'Remove attraction favorite',
+        parameters: [{ name: 'attractionId', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
+      },
+    },
+    '/api/v1/trips': {
+      get: { tags: ['Trips'], summary: 'List current user trips', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
+      post: {
+        tags: ['Trips'],
+        summary: 'Create a trip',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/TripCreateRequest' } } } },
+        responses: { '201': { $ref: '#/components/responses/Created' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
+      },
+    },
+    '/api/v1/trips/{id}': {
+      get: {
+        tags: ['Trips'],
+        summary: 'Get owned trip',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+      patch: {
+        tags: ['Trips'],
+        summary: 'Update trip metadata and sharing',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/TripUpdateRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+      delete: {
+        tags: ['Trips'],
+        summary: 'Delete owned trip',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/trips/{id}/snapshot': {
+      post: {
+        tags: ['Trips'],
+        summary: 'Save an itinerary snapshot',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/TripSnapshotRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/trips/share/{token}': {
+      get: {
+        tags: ['Trips'],
+        summary: 'Get a public shared trip',
+        security: [],
+        parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string', minLength: 8, maxLength: 128 } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/services/exchange-rates': {
+      get: { tags: ['Services'], summary: 'INR exchange rates', responses: { '200': { $ref: '#/components/responses/Ok' } } },
+    },
+    '/api/v1/services/holidays': {
+      get: {
+        tags: ['Services'],
+        summary: 'Public holidays',
+        parameters: [
+          { name: 'countryCode', in: 'query', schema: { type: 'string', minLength: 2, maxLength: 2, default: 'IN' } },
+          { name: 'year', in: 'query', schema: { type: 'integer', minimum: 2020, maximum: 2100 } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
+      },
+    },
+    '/api/v1/services/country-info/{code}': {
+      get: {
+        tags: ['Services'],
+        summary: 'Country metadata',
+        parameters: [{ name: 'code', in: 'path', required: true, schema: { type: 'string', minLength: 2, maxLength: 3 } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/services/safety-pulse': {
+      get: { tags: ['Services'], summary: 'India travel safety pulse', responses: { '200': { $ref: '#/components/responses/Ok' } } },
+    },
+    '/api/v1/analytics/dashboard': {
+      get: { tags: ['Analytics'], summary: 'Platform dashboard metrics', responses: { '200': { $ref: '#/components/responses/Ok' } } },
+    },
+  },
+} as const;
+
+export const swaggerContentSecurityPolicy = [
+  "default-src 'self'",
+  "script-src 'self' https://cdn.jsdelivr.net",
+  "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+  "img-src 'self' data: https:",
+  "font-src 'self' data: https:",
+  "connect-src 'self'",
+  "object-src 'none'",
+].join('; ');
+
+export const swaggerHtml = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Travel Assistant API Docs</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script src="/api/docs/swagger-init.js"></script>
+  </body>
+</html>`;
+
+export const swaggerInitScript = `window.addEventListener('load', () => {
+  window.ui = SwaggerUIBundle({
+    url: '/api/openapi.json',
+    dom_id: '#swagger-ui',
+    deepLinking: true,
+    presets: [SwaggerUIBundle.presets.apis],
+    layout: 'BaseLayout'
+  });
+});`;

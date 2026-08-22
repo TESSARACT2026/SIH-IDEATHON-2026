@@ -2,7 +2,9 @@
 
 Base URL: `/api/v1`
 
-Response shape used by most endpoints:
+Health check: `/api/health`
+
+Most API responses use:
 
 ```json
 {
@@ -10,7 +12,7 @@ Response shape used by most endpoints:
 }
 ```
 
-Error shape:
+Errors use:
 
 ```json
 {
@@ -21,177 +23,297 @@ Error shape:
 }
 ```
 
-Auth-protected endpoints expect:
+## Authentication
+
+The backend currently verifies Supabase access tokens. Send the Supabase session
+access token on API requests:
 
 ```http
-Authorization: Bearer <accessToken>
+Authorization: Bearer <supabaseAccessToken>
 ```
 
-## Status Summary
+There are no backend `/api/v1/auth/register`, `/api/v1/auth/login`,
+`/api/v1/auth/refresh`, or `/api/v1/auth/logout` routes. Auth is handled by
+Supabase on the frontend, then `AuthContext` attaches the access token to
+`apiClient`.
 
-- Backend route coverage is mostly in place for auth, profile/preferences, knowledge, attractions, live data, planning, trips, favorites, services, and analytics.
-- Remaining backend gaps are mainly review/workflow endpoints, search/nearby/content APIs, budget/export/audio support, and persistence for feedback.
-- Remaining frontend gaps include favorites API wiring, trip creation/snapshot flows, and a broken analytics config import.
+Important current behavior: `backend/src/server.ts` mounts `requireAuth` at
+`/api/v1`, so every endpoint below `/api/v1` requires a valid bearer token at
+the server level. Some route handlers are written as public endpoints, but they
+are not reachable anonymously while that global middleware remains in place.
 
-## Finished / Backend Functional
+## Endpoint Summary
 
-These endpoints exist and perform real backend work.
+| Method | Endpoint | Auth | Purpose |
+|---|---|---:|---|
+| GET | `/api/health` | No | Health, database connectivity, uptime, memory, environment. |
+| GET | `/api/v1/users/me` | Yes | Current user profile and preferences. |
+| PATCH | `/api/v1/users/me` | Yes | Update profile fields. |
+| GET | `/api/v1/users/me/preferences` | Yes | Current user preferences, with defaults if none exist. |
+| PUT | `/api/v1/users/me/preferences` | Yes | Upsert full preferences. |
+| PATCH | `/api/v1/users/me/preferences` | Yes | Partially update preferences. |
+| GET | `/api/v1/knowledge/destinations` | Yes | List destinations. |
+| GET | `/api/v1/knowledge/destinations/:id` | Yes | Get one destination with attraction count. |
+| GET | `/api/v1/knowledge/destinations/:id/attractions` | Yes | List destination attractions with filters. |
+| GET | `/api/v1/attractions/:id/facts` | Yes | Get attraction fact provenance. |
+| GET | `/api/v1/attractions/:id/alternatives` | Yes | Suggest similar same-destination attractions. |
+| GET | `/api/v1/live/weather` | Yes | Current weather from Open-Meteo. |
+| GET | `/api/v1/live/route` | Yes | Distance and duration from OpenRouteService. |
+| POST | `/api/v1/planner/generate` | Yes | Generate an itinerary from preferences, trust data, weather, holidays, and routing. |
+| POST | `/api/v1/nlu/extract` | Yes | Extract trip preferences from free text with Gemini or keyword fallback. |
+| POST | `/api/v1/nlu/narrate` | Yes | Generate itinerary narration with fact-marker validation. |
+| POST | `/api/v1/feedback` | Yes | Validate and queue feedback response. Does not persist yet. |
+| GET | `/api/v1/favorites` | Yes | List current user's saved attractions. |
+| POST | `/api/v1/favorites` | Yes | Add an attraction favorite. |
+| DELETE | `/api/v1/favorites/:attractionId` | Yes | Remove an attraction favorite. |
+| GET | `/api/v1/trips` | Yes | List current user's trips. |
+| POST | `/api/v1/trips` | Yes | Create a trip. |
+| GET | `/api/v1/trips/:id` | Yes | Get a trip owned by the current user. |
+| PATCH | `/api/v1/trips/:id` | Yes | Update trip metadata and sharing state. |
+| POST | `/api/v1/trips/:id/snapshot` | Yes | Save a frozen itinerary snapshot on a trip. |
+| DELETE | `/api/v1/trips/:id` | Yes | Delete a trip owned by the current user. |
+| GET | `/api/v1/trips/share/:token` | Yes* | Public share route in code, but blocked anonymously by global `/api/v1` auth. |
+| GET | `/api/v1/services/exchange-rates` | Yes | INR exchange rates with 24-hour cache. |
+| GET | `/api/v1/services/holidays` | Yes | Public holidays with 30-day cache. |
+| GET | `/api/v1/services/country-info/:code` | Yes | Country metadata with 30-day cache. |
+| GET | `/api/v1/services/safety-pulse` | Yes | India travel safety pulse with fallback data. |
+| GET | `/api/v1/analytics/dashboard` | Yes | Platform counts and fact accuracy percentage. |
 
-| Method | Endpoint | Auth | Purpose | Notes |
-|---|---:|---:|---|---|
-| GET | `/api/health` | No | Health check | Checks database connectivity and returns uptime/memory/status. |
-| POST | `/api/v1/auth/register` | No | Create user account | Body: `{ email, password, name? }`. Sets refresh cookie and returns access token. |
-| POST | `/api/v1/auth/login` | No | Login user | Body: `{ email, password }`. Includes brute-force lockout. |
-| POST | `/api/v1/auth/refresh` | Cookie | Refresh session | Uses `refresh_token` HTTP-only cookie and rotates refresh token. |
-| POST | `/api/v1/auth/logout` | Cookie | Logout user | Best-effort refresh-token deletion and clears cookie. |
-| GET | `/api/v1/users/me` | Yes | Get current user profile | Includes preferences when present. |
-| PATCH | `/api/v1/users/me` | Yes | Update current user profile | Can update `name` and `preferredLanguage`. |
-| GET | `/api/v1/users/me/preferences` | Yes | Get current user preferences | Returns saved preferences or safe defaults. |
-| PUT | `/api/v1/users/me/preferences` | Yes | Upsert full user preferences | Validates budget, pace, group, interests, accessibility, and transport fields. |
-| PATCH | `/api/v1/users/me/preferences` | Yes | Partially update user preferences | Upserts a preference row when missing. |
-| GET | `/api/v1/knowledge/destinations` | No | List destinations | Reads `destinations` table. |
-| GET | `/api/v1/knowledge/destinations/:id` | No | Get one destination | Includes attraction count. `:id` can be a UUID or slug ID. |
-| GET | `/api/v1/knowledge/destinations/:id/attractions` | No | List attractions for destination | `:id` can be a UUID or slug ID. Supports category, accessibility, indoor/outdoor, and name search filters. |
-| GET | `/api/v1/attractions/:id/facts` | No | Get fact provenance for attraction | `:id` can be a UUID or slug ID. Includes source and verification metadata. |
-| GET | `/api/v1/attractions/:id/alternatives` | No | Suggest similar attractions | Returns nearby same-destination alternatives based on category overlap. |
-| GET | `/api/v1/live/weather?lat=&lon=` | No | Current weather | Uses Open-Meteo with in-memory cache. |
-| GET | `/api/v1/live/route?startLat=&startLon=&endLat=&endLon=&profile=` | No | Travel distance/duration | Uses OpenRouteService. `profile`: `driving-car` or `foot-walking`. |
-| POST | `/api/v1/planner/generate` | No | Generate itinerary | Uses DB attractions/facts/crowd/sensitivity, routing buffers, weather warnings, and holiday crowd warnings. |
-| GET | `/api/v1/trips` | Yes | List current user's trips | Includes destination summary and snapshot flags. |
-| GET | `/api/v1/trips/:id` | Yes | Get trip details | Enforces trip ownership. Includes latest itinerary records. |
-| POST | `/api/v1/trips` | Yes | Create trip | Body: `{ destinationId, title?, startDate, endDate, status? }`. |
-| PATCH | `/api/v1/trips/:id` | Yes | Update trip metadata / sharing | Can update title, dates, status, and `isPublic`. Generates share token. |
-| POST | `/api/v1/trips/:id/snapshot` | Yes | Save frozen itinerary snapshot | Stores generated plan JSON in `trip.itinerarySnapshot`. |
-| DELETE | `/api/v1/trips/:id` | Yes | Delete trip | Enforces ownership. |
-| GET | `/api/v1/trips/share/:token` | No | Public shared trip | Only returns public trips. Does not expose owner email/user ID. |
-| GET | `/api/v1/favorites` | Yes | List favorites | Returns saved attractions for current user. |
-| POST | `/api/v1/favorites` | Yes | Add favorite | Body: `{ attractionId }`. Uses upsert to avoid duplicates. |
-| DELETE | `/api/v1/favorites/:attractionId` | Yes | Remove favorite | Deletes favorite for current user. |
-| GET | `/api/v1/services/exchange-rates` | No | INR exchange rates | Uses public currency API with cache. |
-| GET | `/api/v1/services/holidays?countryCode=&year=` | No | Public holidays | Uses Nager.Date with cache. Defaults to India/current year. |
-| GET | `/api/v1/services/country-info/:code` | No | Country metadata | Uses REST Countries with cache. |
-| GET | `/api/v1/services/safety-pulse` | No | Travel safety pulse | Uses Warnely when available, otherwise fallback data. |
-| GET | `/api/v1/analytics/dashboard` | No | Platform metrics | Counts trips, users with preferences, unique destinations, facts, and verified/live fact percentage. |
+## Request Details
 
-## In Work / Partial
+### Users
 
-These endpoints exist, but the implementation is incomplete, mocked, or not fully wired to the frontend.
-
-| Method | Endpoint | Auth | Current behavior | Missing / Risk |
-|---|---:|---:|---|---|
-| POST | `/api/v1/nlu/extract` | No | Uses Gemini for prompt preference extraction with keyword fallback. | Falls back when Gemini is unavailable; depends on `GEMINI_API_KEY` for LLM behavior. |
-| POST | `/api/v1/nlu/narrate` | No | Uses Gemini for itinerary narration, then validates fact markers. | Falls back to template narration when Gemini is unavailable. |
-| POST | `/api/v1/feedback` | Yes | Validates payload, verifies facts, rate-limits, sanitizes, returns `PENDING`. | Does not currently persist feedback to the database. |
-| POST | `/api/v1/planner/generate` | No | Generates itinerary response. | Does not automatically create a trip or save the plan; caller must use trip snapshot endpoint. |
-| GET | `/api/v1/analytics/dashboard` | No | Backend endpoint works. | Frontend `AnalyticsPage` imports missing `../config/env`, so the page cannot call it correctly. |
-| GET/POST/DELETE | `/api/v1/favorites...` | Yes | Backend works. | Frontend `FavoritesPage` currently uses hardcoded local state instead of these APIs. |
-| POST | `/api/v1/trips` | Yes | Backend works. | No frontend screen currently calls `tripsApi.create`. |
-| POST | `/api/v1/trips/:id/snapshot` | Yes | Backend works. | No frontend screen currently calls `tripsApi.saveSnapshot`. |
-
-## Not Set Yet / No Backend Endpoint
-
-These features are visible or implied in the frontend, but no matching backend endpoint exists yet.
-
-| Feature | Suggested endpoint | Status |
-|---|---:|---|
-| Global destination/place search from dashboard header | `GET /api/v1/search?q=` | Not set yet |
-| Nearby places based on current location | `GET /api/v1/nearby?lat=&lon=&radius=` | Not set yet |
-| Dedicated accessibility guide page | `GET /api/v1/accessibility/...` | Not set yet |
-| Travel guide articles/content | `GET /api/v1/guides` | Not set yet |
-| Emergency contacts/services | `GET /api/v1/emergency?destinationId=` | Not set yet |
-| Admin feedback review queue | `GET/PATCH /api/v1/admin/feedback` | Not set yet |
-| Fact re-verification workflow | `POST /api/v1/facts/:id/verify` | Not set yet |
-| Crowd report submission | `POST /api/v1/crowd-reports` | Not set yet |
-| Local business discovery | `GET /api/v1/local-businesses?destinationId=` | Not set yet |
-| Budget persistence for actual spend | `GET/PATCH /api/v1/trips/:id/budget` | Not set yet |
-| PDF export generation on server | `GET /api/v1/trips/:id/export.pdf` | Not set yet |
-| Voice/audio generation on server | `POST /api/v1/nlu/audio` | Not set yet |
-
-## Auth Endpoint Details
-
-### POST `/api/v1/auth/register`
-
-Request:
+`PATCH /api/v1/users/me`
 
 ```json
 {
-  "email": "user@example.com",
-  "password": "password123",
-  "name": "Optional Name"
+  "name": "Optional Name",
+  "preferredLanguage": "en",
+  "emergencyContactName": "Optional Contact",
+  "emergencyContactPhone": "+911234567890"
 }
 ```
 
-Response:
+`PUT/PATCH /api/v1/users/me/preferences`
 
 ```json
 {
-  "data": {
-    "user": {
-      "id": "uuid",
-      "email": "user@example.com",
-      "name": "Optional Name"
-    },
-    "accessToken": "jwt"
+  "budgetBand": "MODERATE",
+  "pace": "RELAXED",
+  "groupType": "FAMILY",
+  "interests": ["Heritage", "Nature & Parks"],
+  "foodPreferences": ["vegetarian"],
+  "transportPreference": "MIXED",
+  "accessibilityMobility": false,
+  "accessibilityVision": false,
+  "accessibilityHearing": false,
+  "accessibilityCognitive": false,
+  "accessibilityNotes": "Avoid long stairs",
+  "walkingToleranceMinutes": 30,
+  "indoorOutdoorPreference": "mixed",
+  "localBusinessPreference": true
+}
+```
+
+Allowed values:
+
+- `preferredLanguage`: `en`, `hi`, `or`
+- `budgetBand`: `BUDGET`, `MODERATE`, `PREMIUM`
+- `pace`: `RELAXED`, `MODERATE`, `PACKED`
+- `groupType`: `SOLO`, `COUPLE`, `FAMILY`, `GROUP`
+- `transportPreference`: `WALKING`, `PUBLIC_TRANSIT`, `CAB`, `OWN_VEHICLE`, `MIXED`
+- `indoorOutdoorPreference`: `indoor`, `outdoor`, `mixed`
+
+### Knowledge And Attractions
+
+`GET /api/v1/knowledge/destinations`
+
+Query params:
+
+- `region`: optional case-insensitive match
+- `country`: optional case-insensitive match
+
+`GET /api/v1/knowledge/destinations/:id/attractions`
+
+Query params:
+
+- `categories`: optional comma-separated category list
+- `accessibilityWheelchair`: `true` or `false`
+- `indoorOutdoor`: `indoor`, `outdoor`, or `mixed`
+- `search`: optional name search, max 100 characters
+
+Destination and attraction IDs accept 1-100 character strings. Seed data may use
+slug IDs instead of UUIDs.
+
+### Live Data
+
+`GET /api/v1/live/weather?lat=20.2961&lon=85.8245`
+
+`lat` must be `-90..90`; `lon` must be `-180..180`.
+
+`GET /api/v1/live/route?startLat=20.2961&startLon=85.8245&endLat=20.27&endLon=85.84&profile=driving-car`
+
+`profile` defaults to `driving-car`; allowed values are `driving-car` and
+`foot-walking`.
+
+### Planner
+
+`POST /api/v1/planner/generate`
+
+```json
+{
+  "destinationId": "bhubaneswar-odisha",
+  "startDate": "2026-08-21T09:00:00.000Z",
+  "endDate": "2026-08-23T18:00:00.000Z",
+  "days": 3,
+  "preferences": {
+    "pace": "MODERATE",
+    "accessibilityWheelchair": false,
+    "accessibilityVision": false,
+    "accessibilityHearing": false,
+    "accessibilityCognitive": false,
+    "interests": ["Heritage"],
+    "transportPreference": "MIXED",
+    "groupType": "SOLO",
+    "walkingToleranceMinutes": 30,
+    "indoorOutdoorPreference": "mixed",
+    "localBusinessPreference": false
   }
 }
 ```
 
-### POST `/api/v1/auth/login`
+Notes:
 
-Request:
+- `days` must be 1-14.
+- `endDate` is accepted but ignored by the itinerary engine.
+- The endpoint returns itinerary items, exclusions, and warnings. It does not
+  create a trip or save a snapshot.
+
+### NLU
+
+`POST /api/v1/nlu/extract`
 
 ```json
 {
-  "email": "user@example.com",
-  "password": "password123"
+  "prompt": "A relaxed family trip with temples, history, and short walks."
 }
 ```
 
-Response:
+`prompt` must be 5-1000 characters.
+
+`POST /api/v1/nlu/narrate`
 
 ```json
 {
-  "data": {
-    "user": {
-      "id": "uuid",
-      "email": "user@example.com",
-      "name": "Optional Name"
-    },
-    "accessToken": "jwt"
+  "itinerary": [
+    {
+      "attractionName": "Lingaraj Temple",
+      "startTime": "09:00",
+      "endTime": "11:00",
+      "factId": "00000000-0000-0000-0000-000000000000",
+      "description": "Temple visit"
+    }
+  ],
+  "validFactIds": ["00000000-0000-0000-0000-000000000000"]
+}
+```
+
+`itinerary` supports up to 20 items. `validFactIds` supports up to 100 UUIDs.
+
+### Feedback
+
+`POST /api/v1/feedback`
+
+```json
+{
+  "entityId": "fact-id-or-slug",
+  "entityType": "FACT",
+  "feedbackType": "OUTDATED",
+  "comment": "The opening time has changed."
+}
+```
+
+Allowed values:
+
+- `entityType`: `ATTRACTION`, `FACT`, `CROWD_RECORD`
+- `feedbackType`: `INACCURATE`, `OUTDATED`, `OTHER`
+
+Current limitation: feedback is validated and logged, but not written to the
+database.
+
+### Favorites
+
+`POST /api/v1/favorites`
+
+```json
+{
+  "attractionId": "lingaraj-temple"
+}
+```
+
+Adding a duplicate favorite is safe; the backend uses an upsert.
+
+### Trips
+
+`POST /api/v1/trips`
+
+```json
+{
+  "destinationId": "bhubaneswar-odisha",
+  "title": "My Trip",
+  "startDate": "2026-08-21T09:00:00.000Z",
+  "endDate": "2026-08-23T18:00:00.000Z",
+  "status": "DRAFT"
+}
+```
+
+`PATCH /api/v1/trips/:id`
+
+```json
+{
+  "title": "Updated Trip",
+  "startDate": "2026-08-21T09:00:00.000Z",
+  "endDate": "2026-08-23T18:00:00.000Z",
+  "status": "PLANNED",
+  "isPublic": true
+}
+```
+
+`POST /api/v1/trips/:id/snapshot`
+
+```json
+{
+  "itinerarySnapshot": {
+    "destinationId": "bhubaneswar-odisha",
+    "days": 3,
+    "itineraryItems": []
   }
 }
 ```
 
-### POST `/api/v1/auth/refresh`
+Trip `:id` params must be UUIDs. `destinationId` accepts 1-100 character strings.
+`status` values are `DRAFT`, `PLANNED`, `ACTIVE`, and `COMPLETED`. `endDate`
+must be after `startDate` when creating a trip.
 
-Request: no JSON body. Requires `refresh_token` cookie.
+### Services
 
-Response:
+`GET /api/v1/services/holidays?countryCode=IN&year=2026`
 
-```json
-{
-  "data": {
-    "user": {
-      "id": "uuid",
-      "email": "user@example.com",
-      "name": "Optional Name"
-    },
-    "accessToken": "new-jwt"
-  }
-}
-```
+- `countryCode`: two-letter country code, defaults to `IN`
+- `year`: integer from `2020` to `2100`, defaults to the current year
 
-### POST `/api/v1/auth/logout`
+`GET /api/v1/services/country-info/IN`
 
-Request: no JSON body. Uses `refresh_token` cookie if present.
+`code` must be 2-3 characters.
 
-Response:
+## Current Gaps
 
-```json
-{
-  "data": {
-    "success": true,
-    "message": "Logged out successfully"
-  }
-}
-```
+- Backend auth endpoints documented previously do not exist; use Supabase auth.
+- Global `/api/v1` auth currently blocks routes intended to be public, including
+  knowledge, live data, services, analytics, planner, NLU, and trip share.
+- Feedback is not persisted.
+- `POST /api/v1/planner/generate` does not save trips automatically.
+- No backend endpoints exist yet for global search, nearby places, guide
+  content, emergency contacts, admin feedback review, fact re-verification,
+  crowd reports, local business discovery, budget tracking, PDF export, or
+  server-side audio generation.

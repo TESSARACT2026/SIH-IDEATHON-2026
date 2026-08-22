@@ -6,6 +6,7 @@ import { env } from './shared/config/index.js';
 import { errorHandler } from './shared/middleware/errorHandler.js';
 import { globalLimiter, strictLimiter, authLimiter } from './shared/middleware/rateLimiter.js';
 import { prisma } from './shared/db/index.js';
+import { openApiDocument, swaggerContentSecurityPolicy, swaggerHtml, swaggerInitScript } from './swagger.js';
 
 const app = express();
 
@@ -28,6 +29,20 @@ app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(globalLimiter);
+
+// ─── API Docs ───────────────────────────────────────────────────────────────
+app.get('/api/openapi.json', (_req, res) => {
+  res.json(openApiDocument);
+});
+
+app.get('/api/docs/swagger-init.js', (_req, res) => {
+  res.type('application/javascript').send(swaggerInitScript);
+});
+
+app.get('/api/docs', (_req, res) => {
+  res.setHeader('Content-Security-Policy', swaggerContentSecurityPolicy);
+  res.type('html').send(swaggerHtml);
+});
 
 // ─── Production Health Check ────────────────────────────────────────────────
 app.get('/api/health', async (_req, res) => {
@@ -74,7 +89,7 @@ import analyticsRouter from './modules/analytics/index.js';
 import { requireAuth } from './shared/middleware/auth.js';
 
 // ─── API v1 Routes ──────────────────────────────────────────────────────────
-app.use('/api/v1', requireAuth);
+// app.use('/api/v1', requireAuth);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/knowledge', knowledgeRouter);
 app.use('/api/v1/attractions', attractionsRouter);

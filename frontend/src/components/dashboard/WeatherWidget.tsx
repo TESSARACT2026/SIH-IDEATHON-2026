@@ -11,6 +11,26 @@ interface WeatherWidgetProps {
   location?: string;
 }
 
+const getWeatherInfo = (code?: number, fallbackCondition = 'Partly Cloudy') => {
+  if (code === 0) return { emoji: '☀️', label: 'Clear sky' };
+  if (code !== undefined && [1, 2, 3].includes(code)) return { emoji: '⛅', label: 'Partly cloudy' };
+  if (code !== undefined && [45, 48].includes(code)) return { emoji: '🌫️', label: 'Foggy' };
+  if (code !== undefined && [51, 53, 55, 56, 57].includes(code)) return { emoji: '🌦️', label: 'Drizzle' };
+  if (code !== undefined && [61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return { emoji: '🌧️', label: 'Rain' };
+  if (code !== undefined && [71, 73, 75, 77, 85, 86].includes(code)) return { emoji: '🌨️', label: 'Snow' };
+  if (code !== undefined && [95, 96, 99].includes(code)) return { emoji: '⛈️', label: 'Thunderstorm' };
+
+  const condition = fallbackCondition.toLowerCase();
+  if (condition.includes('thunder')) return { emoji: '⛈️', label: fallbackCondition };
+  if (condition.includes('rain') || condition.includes('shower')) return { emoji: '🌧️', label: fallbackCondition };
+  if (condition.includes('drizzle')) return { emoji: '🌦️', label: fallbackCondition };
+  if (condition.includes('snow')) return { emoji: '🌨️', label: fallbackCondition };
+  if (condition.includes('fog') || condition.includes('mist')) return { emoji: '🌫️', label: fallbackCondition };
+  if (condition.includes('clear') || condition.includes('sun')) return { emoji: '☀️', label: fallbackCondition };
+  if (condition.includes('cloud')) return { emoji: '⛅', label: fallbackCondition };
+  return { emoji: '🌤️', label: fallbackCondition };
+};
+
 export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
   temperature = 28,
   condition = 'Partly Cloudy',
@@ -21,6 +41,8 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
 }) => {
   const { t } = useTranslation();
   const [currentTemp, setCurrentTemp] = useState(temperature);
+  const [currentCondition, setCurrentCondition] = useState(condition);
+  const [currentWeatherCode, setCurrentWeatherCode] = useState<number>();
   const [currentLocation, setCurrentLocation] = useState(location);
   const [currentWind, setCurrentWind] = useState(windSpeed);
   const [isLoading, setIsLoading] = useState(false);
@@ -35,8 +57,11 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
             const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`);
             const data = await res.json();
             if (data.current_weather) {
+              const weatherCode = data.current_weather.weathercode;
               setCurrentTemp(Math.round(data.current_weather.temperature));
               setCurrentWind(Math.round(data.current_weather.windspeed));
+              setCurrentWeatherCode(weatherCode);
+              setCurrentCondition(getWeatherInfo(weatherCode, condition).label);
             }
 
             // Reverse Geocoding to get actual city name
@@ -58,6 +83,8 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
     }
   }, []);
 
+  const weatherInfo = getWeatherInfo(currentWeatherCode, currentCondition);
+
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-gray-200 dark:border-gray-800 shadow-sm transition-colors relative overflow-hidden">
       {/* Header */}
@@ -77,13 +104,13 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
 
       {/* Temperature row */}
       <div className="flex items-center gap-3 mb-1 relative z-10">
-        <span className="text-3xl">⛅</span>
+        <span className="text-3xl">{weatherInfo.emoji}</span>
         <div>
           <span className="text-4xl font-bold text-gray-900 dark:text-white">{currentTemp}°</span>
           <span className="text-lg font-medium text-gray-500 dark:text-gray-400 ml-1">C</span>
         </div>
       </div>
-      <p className="text-sm text-gray-600 dark:text-gray-300 mb-1 relative z-10">{condition}</p>
+      <p className="text-sm text-gray-600 dark:text-gray-300 mb-1 relative z-10">{weatherInfo.label}</p>
       <div className="flex items-center gap-1 text-xs text-orange-500 font-medium mb-4 relative z-10">
         <span>📍</span>
         <span>{currentLocation}</span>

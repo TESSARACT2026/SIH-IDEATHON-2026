@@ -77,12 +77,40 @@ Run the SQL migrations located in `backend/prisma/schema.prisma` against your Su
 Create a `.env` file in the root directory:
 ```env
 SUPABASE_URL=your_supabase_url
-SUPABASE_SERVICE_KEY=your_supabase_service_role_key
+SUPABASE_ANON_KEY=your_supabase_publishable_or_anon_key
+DATABASE_URL=your_supabase_postgres_connection_string
 GEMINI_API_KEY=your_gemini_api_key
 ORS_API_KEY=your_openrouteservice_key
+JWT_SECRET=your_jwt_secret
 ```
 
-### 3. Start the Backend
+Create `frontend/.env.local`:
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+```
+
+### 3. Google Auth Setup
+In Google Cloud Console, create an OAuth client:
+- Application type: `Web application`
+- Authorized JavaScript origins:
+  - `http://localhost:5173`
+  - your production frontend origin
+- Authorized redirect URI:
+  - your Supabase callback URL from Supabase Dashboard → Authentication → Providers → Google
+
+In Supabase Dashboard → Authentication → Providers → Google:
+- Enable Google
+- Paste the Google OAuth Client ID
+- Paste the Google OAuth Client Secret
+
+In Supabase Dashboard → Authentication → URL Configuration:
+- Site URL: `http://localhost:5173`
+- Redirect URLs:
+  - `http://localhost:5173/dashboard`
+  - your production dashboard URL
+
+### 4. Start the Backend
 ```bash
 cd backend
 npm install
@@ -90,7 +118,7 @@ npm run dev
 ```
 *(The backend will run on http://localhost:3001)*
 
-### 4. Start the Frontend
+### 5. Start the Frontend
 ```bash
 cd frontend
 npm install
