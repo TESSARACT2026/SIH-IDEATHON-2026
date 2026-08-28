@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { prisma } from '../../shared/db/index.js';
+import { requireAuth } from '../../shared/middleware/auth.js';
 
 const router = Router();
 
 // GET /api/v1/analytics/dashboard
-router.get('/dashboard', async (req, res, next) => {
+router.get('/dashboard', requireAuth, async (req, res, next) => {
   try {
     const totalTrips = await prisma.trip.count();
     

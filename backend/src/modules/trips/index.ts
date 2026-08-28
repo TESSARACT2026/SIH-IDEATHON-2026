@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { randomBytes } from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../../shared/db/index.js';
-import { requireAuth, optionalAuth } from '../../shared/middleware/auth.js';
+import { requireAuth } from '../../shared/middleware/auth.js';
 import { AppError } from '../../shared/middleware/errorHandler.js';
 import { globalLimiter } from '../../shared/middleware/rateLimiter.js';
 
@@ -58,6 +58,38 @@ function tripToPublic(trip: any) {
     // NOTE: userId, user email, shareToken are deliberately excluded
   };
 }
+
+// ─── Public Share Route (Feature 2) ─────────────────────────────────────────
+// GET /api/v1/trips/share/:token — NO AUTH REQUIRED, rate-limited
+// Returns only trips with is_public=true and matching share_token
+// NEVER leaks owner email/userId
+
+router.get('/share/:token', globalLimiter, async (req, res, next) => {
+  try {
+    const { token } = shareTokenParamSchema.parse(req.params);
+
+    const trip = await prisma.trip.findUnique({
+      where: { shareToken: token },
+      include: {
+        destination: {
+          select: { id: true, name: true, region: true, country: true, latitude: true, longitude: true },
+        },
+      },
+    });
+
+    if (!trip || !trip.isPublic) {
+      throw new AppError('Shared trip not found or is no longer public', 404, 'NOT_FOUND');
+    }
+
+    res.json({ data: tripToPublic(trip) });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid share token', details: err.flatten().fieldErrors } });
+      return;
+    }
+    next(err);
+  }
+});
 
 // ─── Authenticated Routes ────────────────────────────────────────────────────
 
@@ -294,38 +326,6 @@ router.delete('/:id', requireAuth, async (req, res, next) => {
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid trip ID', details: err.flatten().fieldErrors } });
-      return;
-    }
-    next(err);
-  }
-});
-
-// ─── Public Share Route (Feature 2) ─────────────────────────────────────────
-// GET /api/v1/trips/share/:token — NO AUTH REQUIRED, rate-limited
-// Returns only trips with is_public=true and matching share_token
-// NEVER leaks owner email/userId
-
-router.get('/share/:token', globalLimiter, async (req, res, next) => {
-  try {
-    const { token } = shareTokenParamSchema.parse(req.params);
-
-    const trip = await prisma.trip.findUnique({
-      where: { shareToken: token },
-      include: {
-        destination: {
-          select: { id: true, name: true, region: true, country: true, latitude: true, longitude: true },
-        },
-      },
-    });
-
-    if (!trip || !trip.isPublic) {
-      throw new AppError('Shared trip not found or is no longer public', 404, 'NOT_FOUND');
-    }
-
-    res.json({ data: tripToPublic(trip) });
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid share token', details: err.flatten().fieldErrors } });
       return;
     }
     next(err);
