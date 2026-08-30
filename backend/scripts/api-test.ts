@@ -330,6 +330,32 @@ async function testServices() {
   });
 }
 
+async function testEmergency() {
+  await test('GET /emergency national contacts', async () => {
+    const r = await req('GET', `${API}/emergency`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    const contacts = data.contacts as unknown[];
+    if (r.ok && (!Array.isArray(contacts) || contacts.length === 0)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /emergency with destination slug', async () => {
+    const r = await req('GET', `${API}/emergency?destinationId=bhubaneswar-odisha`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    const destination = data.destination as Record<string, unknown> | null;
+    const contacts = data.contacts as unknown[];
+    if (r.ok && (!destination?.id || contacts.length <= 7)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /emergency unsupported country -> 400', async () => {
+    const r = await req('GET', `${API}/emergency?countryCode=US`);
+    return { ...r, ok: r.status === 400 };
+  });
+}
+
 async function testPublicTripShare() {
   await test('GET /trips/share/:token invalid token -> 400', async () => {
     const r = await req('GET', `${API}/trips/share/short`);
@@ -570,6 +596,7 @@ async function main() {
   await testPlanner();
   await testLiveData();
   await testServices();
+  await testEmergency();
   await testPublicTripShare();
   await testSearch();
   await testNearby();

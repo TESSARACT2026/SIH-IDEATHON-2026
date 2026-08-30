@@ -85,6 +85,7 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/services/holidays` | No | Public holidays with 30-day cache. |
 | GET | `/api/v1/services/country-info/:code` | No | Country metadata with 30-day cache. |
 | GET | `/api/v1/services/safety-pulse` | No | India travel safety pulse with fallback data. |
+| GET | `/api/v1/emergency` | No | India emergency contacts, optionally destination-aware. |
 | GET | `/api/v1/analytics/dashboard` | Yes | Platform counts and fact accuracy percentage. |
 | GET | `/api/v1/search` | No | Search destinations and attractions by text. |
 | GET | `/api/v1/nearby` | No | Find attractions near a coordinate. |
@@ -372,6 +373,16 @@ the raw `shareToken`.
 
 `code` must be 2-3 characters.
 
+### Emergency
+
+`GET /api/v1/emergency?destinationId=bhubaneswar-odisha&countryCode=IN`
+
+- `countryCode`: currently supports `IN`; defaults to `IN`.
+- `destinationId`: optional UUID or legacy frontend destination slug.
+
+The response includes national emergency numbers and adds regional contacts for
+destinations where official state sources are mapped.
+
 ### Search
 
 `GET /api/v1/search?q=temple&type=all&limit=10`
@@ -403,5 +414,5 @@ the raw `shareToken`.
 ## Current Gaps
 
 - Backend auth endpoints documented previously do not exist; use Supabase auth.
-- No backend endpoints exist yet for guide content, emergency contacts, budget
-  tracking, PDF export, or server-side audio generation.
+- No backend endpoints exist yet for guide content, budget tracking, PDF export,
+  or server-side audio generation.

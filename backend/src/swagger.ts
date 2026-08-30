@@ -21,6 +21,7 @@ export const openApiDocument = {
     { name: 'Favorites' },
     { name: 'Trips' },
     { name: 'Services' },
+    { name: 'Emergency' },
     { name: 'Analytics' },
     { name: 'Search' },
     { name: 'Nearby' },
@@ -539,6 +540,18 @@ export const openApiDocument = {
     },
     '/api/v1/services/safety-pulse': {
       get: { tags: ['Services'], summary: 'India travel safety pulse', responses: { '200': { $ref: '#/components/responses/Ok' } } },
+    },
+    '/api/v1/emergency': {
+      get: {
+        tags: ['Emergency'],
+        summary: 'India emergency contacts',
+        security: [],
+        parameters: [
+          { name: 'countryCode', in: 'query', schema: { type: 'string', minLength: 2, maxLength: 2, default: 'IN' } },
+          { name: 'destinationId', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
     },
     '/api/v1/analytics/dashboard': {
       get: { security: bearerSecurity, tags: ['Analytics'], summary: 'Platform dashboard metrics', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
