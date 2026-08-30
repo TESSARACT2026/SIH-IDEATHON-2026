@@ -88,6 +88,8 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/emergency` | No | India emergency contacts, optionally destination-aware. |
 | GET | `/api/v1/guide/destinations/:id` | No | Structured destination travel guide from stored trusted data. |
 | GET | `/api/v1/guide/attractions/:id` | No | Structured attraction guide with provenance, crowd, and sensitivity data. |
+| GET | `/api/v1/budget/destinations/:id` | No | Calculate destination ticket budget from verified/live price facts. |
+| POST | `/api/v1/budget/estimate` | No | Calculate ticket budget for selected attractions. |
 | GET | `/api/v1/analytics/dashboard` | Yes | Platform counts and fact accuracy percentage. |
 | GET | `/api/v1/search` | No | Search destinations and attractions by text. |
 | GET | `/api/v1/nearby` | No | Find attractions near a coordinate. |
@@ -397,6 +399,27 @@ verification status, latest crowd signal, sensitivity flags, accessibility
 fields, and missing-trusted-fact warnings. The guide API does not generate or
 invent travel claims.
 
+### Budget
+
+`GET /api/v1/budget/destinations/bhubaneswar-odisha?travellerType=INDIAN&travellers=2`
+
+`POST /api/v1/budget/estimate`
+
+```json
+{
+  "attractionIds": ["lingaraj-temple", "odisha-state-museum"],
+  "travellerType": "INDIAN",
+  "travellers": 2
+}
+```
+
+- `travellerType`: `INDIAN`, `FOREIGN`, or `CHILD`; defaults to `INDIAN`.
+- `travellers`: 1-20; defaults to 1.
+
+Budget totals only include `ticket_price` facts whose verification status is
+`VERIFIED` or `LIVE`. Community or unverified prices are returned as line items
+with warnings but excluded from the total.
+
 ### Search
 
 `GET /api/v1/search?q=temple&type=all&limit=10`
@@ -428,5 +451,4 @@ invent travel claims.
 ## Current Gaps
 
 - Backend auth endpoints documented previously do not exist; use Supabase auth.
-- No backend endpoints exist yet for budget tracking, PDF export, or server-side
-  audio generation.
+- No backend endpoints exist yet for PDF export or server-side audio generation.

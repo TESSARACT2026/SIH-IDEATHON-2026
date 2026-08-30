@@ -23,6 +23,7 @@ export const openApiDocument = {
     { name: 'Services' },
     { name: 'Emergency' },
     { name: 'Guide' },
+    { name: 'Budget' },
     { name: 'Analytics' },
     { name: 'Search' },
     { name: 'Nearby' },
@@ -175,6 +176,16 @@ export const openApiDocument = {
         properties: {
           verificationStatus: { type: 'string', enum: ['VERIFIED', 'LIVE', 'COMMUNITY', 'INFERRED', 'UNVERIFIED', 'OUTDATED', 'DISPUTED'] },
           notes: { type: 'string', maxLength: 500 },
+        },
+      },
+      BudgetEstimateRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['attractionIds'],
+        properties: {
+          attractionIds: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 100 }, minItems: 1, maxItems: 50, description: 'UUIDs or legacy frontend slugs.' },
+          travellerType: { type: 'string', enum: ['INDIAN', 'FOREIGN', 'CHILD'], default: 'INDIAN' },
+          travellers: { type: 'integer', minimum: 1, maximum: 20, default: 1 },
         },
       },
       CrowdReportRequest: {
@@ -569,6 +580,28 @@ export const openApiDocument = {
         summary: 'Structured attraction guide',
         security: [],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/budget/destinations/{id}': {
+      get: {
+        tags: ['Budget'],
+        summary: 'Calculate destination ticket budget',
+        security: [],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' },
+          { name: 'travellerType', in: 'query', schema: { type: 'string', enum: ['INDIAN', 'FOREIGN', 'CHILD'], default: 'INDIAN' } },
+          { name: 'travellers', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 20, default: 1 } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/budget/estimate': {
+      post: {
+        tags: ['Budget'],
+        summary: 'Calculate ticket budget for selected attractions',
+        security: [],
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/BudgetEstimateRequest' } } } },
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
       },
     },

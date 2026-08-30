@@ -92,6 +92,7 @@ import localBusinessesRouter from './modules/local-businesses/index.js';
 import crowdRouter from './modules/crowd/index.js';
 import emergencyRouter from './modules/emergency/index.js';
 import guideRouter from './modules/guide/index.js';
+import budgetRouter from './modules/budget/index.js';
 
 // ─── API v1 Routes ──────────────────────────────────────────────────────────
 app.use('/api/v1/users', usersRouter);
@@ -111,6 +112,7 @@ app.use('/api/v1/local-businesses', localBusinessesRouter);
 app.use('/api/v1/crowd', crowdRouter);
 app.use('/api/v1/emergency', emergencyRouter);
 app.use('/api/v1/guide', guideRouter);
+app.use('/api/v1/budget', budgetRouter);
 
 // ─── 404 Handler ────────────────────────────────────────────────────────────
 app.use((_req, res) => {

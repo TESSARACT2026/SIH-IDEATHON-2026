@@ -381,6 +381,36 @@ async function testGuide() {
   });
 }
 
+async function testBudget() {
+  await test('GET /budget/destinations/:id', async () => {
+    const r = await req('GET', `${API}/budget/destinations/bhubaneswar-odisha?travellers=2`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    if (r.ok && typeof data.totalAmount !== 'number') return { ...r, ok: false };
+    return r;
+  });
+
+  await test('POST /budget/estimate', async () => {
+    const r = await req('POST', `${API}/budget/estimate`, {
+      attractionIds: ['lingaraj-temple', 'odisha-state-museum'],
+      travellerType: 'INDIAN',
+      travellers: 2,
+    });
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    const lineItems = data.lineItems as unknown[];
+    if (r.ok && (typeof data.totalAmount !== 'number' || !Array.isArray(lineItems) || lineItems.length !== 2)) {
+      return { ...r, ok: false };
+    }
+    return r;
+  });
+
+  await test('POST /budget/estimate invalid payload -> 400', async () => {
+    const r = await req('POST', `${API}/budget/estimate`, { attractionIds: [], travellers: 0 });
+    return { ...r, ok: r.status === 400 };
+  });
+}
+
 async function testPublicTripShare() {
   await test('GET /trips/share/:token invalid token -> 400', async () => {
     const r = await req('GET', `${API}/trips/share/short`);
@@ -623,6 +653,7 @@ async function main() {
   await testServices();
   await testEmergency();
   await testGuide();
+  await testBudget();
   await testPublicTripShare();
   await testSearch();
   await testNearby();
