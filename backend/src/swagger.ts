@@ -148,6 +148,17 @@ export const openApiDocument = {
           validFactIds: { type: 'array', items: { type: 'string', format: 'uuid' }, maxItems: 100 },
         },
       },
+      NluSpeechRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['text'],
+        properties: {
+          text: { type: 'string', minLength: 3, maxLength: 4000 },
+          voiceName: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9_-]{1,63}$', default: 'Kore' },
+          languageCode: { type: 'string', pattern: '^[a-z]{2,3}(-[A-Z]{2})?$' },
+          format: { type: 'string', enum: ['wav', 'pcm'], default: 'wav' },
+        },
+      },
       FeedbackRequest: {
         type: 'object',
         additionalProperties: false,
@@ -266,6 +277,17 @@ export const openApiDocument = {
       Pdf: {
         description: 'PDF document.',
         content: { 'application/pdf': { schema: { type: 'string', format: 'binary' } } },
+      },
+      Audio: {
+        description: 'Audio document.',
+        content: {
+          'audio/wav': { schema: { type: 'string', format: 'binary' } },
+          'audio/L16': { schema: { type: 'string', format: 'binary' } },
+        },
+      },
+      ServiceUnavailable: {
+        description: 'Upstream service unavailable.',
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiError' } } },
       },
     },
   },
@@ -403,6 +425,14 @@ export const openApiDocument = {
         summary: 'Generate itinerary narration',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NluNarrateRequest' } } } },
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
+      },
+    },
+    '/api/v1/nlu/speech': {
+      post: {
+        tags: ['NLU'],
+        summary: 'Generate spoken narration audio',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NluSpeechRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Audio' }, '400': { $ref: '#/components/responses/BadRequest' }, '503': { $ref: '#/components/responses/ServiceUnavailable' } },
       },
     },
     '/api/v1/feedback': {

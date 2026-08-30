@@ -65,6 +65,7 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | POST | `/api/v1/planner/generate` | Optional | Generate an itinerary; with `saveTrip: true` and bearer auth, also save the trip and itinerary. |
 | POST | `/api/v1/nlu/extract` | No | Extract trip preferences from free text with Gemini or keyword fallback. |
 | POST | `/api/v1/nlu/narrate` | No | Generate itinerary narration with fact-marker validation. |
+| POST | `/api/v1/nlu/speech` | No | Generate spoken narration audio with Gemini TTS. |
 | POST | `/api/v1/feedback` | Yes | Validate and queue feedback response for review. |
 | GET | `/api/v1/feedback/admin/review-queue` | Admin | List feedback awaiting review. |
 | PATCH | `/api/v1/feedback/admin/:id/review` | Admin | Resolve feedback and optionally update a fact's verification status. |
@@ -241,6 +242,25 @@ Notes:
 ```
 
 `itinerary` supports up to 20 items. `validFactIds` supports up to 100 UUIDs.
+
+`POST /api/v1/nlu/speech`
+
+```json
+{
+  "text": "Say warmly: Welcome to Bhubaneswar.",
+  "voiceName": "Kore",
+  "languageCode": "en-US",
+  "format": "wav"
+}
+```
+
+- `text`: 3-4000 characters.
+- `voiceName`: Gemini prebuilt voice name, defaults to `Kore`.
+- `languageCode`: optional BCP-47-style language code such as `en-US` or `hi-IN`.
+- `format`: `wav` or `pcm`; defaults to `wav`.
+
+Returns binary audio (`audio/wav` by default). If Gemini TTS is unavailable, the
+route returns `503 AUDIO_UNAVAILABLE`.
 
 ### Feedback
 
@@ -462,4 +482,4 @@ with warnings but excluded from the total.
 ## Current Gaps
 
 - Backend auth endpoints documented previously do not exist; use Supabase auth.
-- No backend endpoint exists yet for server-side audio generation.
+- No remaining backend feature gaps are currently documented here.

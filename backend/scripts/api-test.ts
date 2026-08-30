@@ -80,14 +80,17 @@ async function req(
 async function reqRaw(
   method: string,
   url: string,
+  body?: unknown,
   headers: Record<string, string> = {}
 ): Promise<{ ok: boolean; status: number; body: ArrayBuffer; headers: Headers }> {
   const res = await fetch(url, {
     method,
     headers: {
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
       ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       ...headers,
     },
+    body: body ? JSON.stringify(body) : undefined,
   });
   return { ok: res.ok, status: res.status, body: await res.arrayBuffer(), headers: res.headers };
 }
@@ -266,6 +269,23 @@ async function testNLU() {
       addWarning('POST /nlu/narrate fallback', String(meta.reason ?? 'Gemini fallback used'));
     }
     return r;
+  });
+
+  await test('POST /nlu/speech invalid text -> 400', async () => {
+    const r = await req('POST', `${API}/nlu/speech`, { text: 'hi' });
+    return { ...r, ok: r.status === 400 };
+  });
+
+  await test('POST /nlu/speech', async () => {
+    const r = await reqRaw('POST', `${API}/nlu/speech`, { text: 'Say warmly: Welcome to Bhubaneswar.', format: 'wav' });
+    if (r.status === 503) {
+      addWarning('POST /nlu/speech unavailable', 'Gemini TTS unavailable');
+      return { ok: true, status: r.status, body: {} };
+    }
+
+    const header = new Uint8Array(r.body.slice(0, 4));
+    const startsWithWav = header[0] === 82 && header[1] === 73 && header[2] === 70 && header[3] === 70;
+    return { ok: r.ok && r.headers.get('content-type')?.includes('audio/wav') === true && startsWithWav, status: r.status, body: {} };
   });
 }
 
