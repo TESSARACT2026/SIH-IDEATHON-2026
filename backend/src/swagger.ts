@@ -156,6 +156,25 @@ export const openApiDocument = {
           comment: { type: 'string', maxLength: 500 },
         },
       },
+      FeedbackReviewRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['status'],
+        properties: {
+          status: { type: 'string', enum: ['REVIEWED', 'ACCEPTED', 'REJECTED'] },
+          factVerificationStatus: { type: 'string', enum: ['VERIFIED', 'LIVE', 'COMMUNITY', 'INFERRED', 'UNVERIFIED', 'OUTDATED', 'DISPUTED'] },
+          notes: { type: 'string', maxLength: 500 },
+        },
+      },
+      FactReverificationRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['verificationStatus'],
+        properties: {
+          verificationStatus: { type: 'string', enum: ['VERIFIED', 'LIVE', 'COMMUNITY', 'INFERRED', 'UNVERIFIED', 'OUTDATED', 'DISPUTED'] },
+          notes: { type: 'string', maxLength: 500 },
+        },
+      },
       CrowdReportRequest: {
         type: 'object',
         additionalProperties: false,
@@ -217,6 +236,10 @@ export const openApiDocument = {
       },
       Unauthorized: {
         description: 'Missing or invalid bearer token.',
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiError' } } },
+      },
+      Forbidden: {
+        description: 'Authenticated user is not allowed to access the resource.',
         content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiError' } } },
       },
       NotFound: {
@@ -368,6 +391,38 @@ export const openApiDocument = {
         summary: 'Queue feedback for review',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedbackRequest' } } } },
         responses: { '201': { $ref: '#/components/responses/Created' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
+      },
+    },
+    '/api/v1/feedback/admin/review-queue': {
+      get: {
+        security: bearerSecurity,
+        tags: ['Feedback'],
+        summary: 'List feedback awaiting admin review',
+        parameters: [
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['PENDING', 'REVIEWED', 'ACCEPTED', 'REJECTED'], default: 'PENDING' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' } },
+      },
+    },
+    '/api/v1/feedback/admin/{id}/review': {
+      patch: {
+        security: bearerSecurity,
+        tags: ['Feedback'],
+        summary: 'Resolve feedback and optionally update fact verification',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedbackReviewRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/feedback/admin/facts/{factId}/reverify': {
+      post: {
+        security: bearerSecurity,
+        tags: ['Feedback'],
+        summary: 'Record a manual fact re-verification result',
+        parameters: [{ name: 'factId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/FactReverificationRequest' } } } },
+        responses: { '201': { $ref: '#/components/responses/Created' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '403': { $ref: '#/components/responses/Forbidden' }, '404': { $ref: '#/components/responses/NotFound' } },
       },
     },
     '/api/v1/crowd/attractions/{attractionId}': {

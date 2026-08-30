@@ -71,6 +71,45 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   });
 }
 
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user) {
+    res.status(401).json({
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required. Provide a valid Bearer token.',
+      },
+    });
+    return;
+  }
+
+  const adminEmails = env.ADMIN_EMAILS
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!adminEmails.length) {
+    res.status(403).json({
+      error: {
+        code: 'ADMIN_NOT_CONFIGURED',
+        message: 'Admin access is not configured.',
+      },
+    });
+    return;
+  }
+
+  if (!adminEmails.includes(req.user.email.toLowerCase())) {
+    res.status(403).json({
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Admin access required.',
+      },
+    });
+    return;
+  }
+
+  next();
+}
+
 /**
  * Optional auth — attaches user if token is valid, but doesn't reject.
  * Useful for public endpoints that behave differently for logged-in users.

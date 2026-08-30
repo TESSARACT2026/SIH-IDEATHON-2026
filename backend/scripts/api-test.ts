@@ -517,6 +517,34 @@ async function testFeedback() {
   });
 }
 
+async function testFeedbackAdminAccess() {
+  const uuid = '00000000-0000-4000-8000-000000000000';
+
+  await test('GET /feedback/admin/review-queue without token -> 401', async () => {
+    const saved = authToken;
+    authToken = '';
+    const r = await req('GET', `${API}/feedback/admin/review-queue`);
+    authToken = saved;
+    return { ...r, ok: r.status === 401 };
+  });
+
+  await test('PATCH /feedback/admin/:id/review without token -> 401', async () => {
+    const saved = authToken;
+    authToken = '';
+    const r = await req('PATCH', `${API}/feedback/admin/${uuid}/review`, { status: 'REVIEWED' });
+    authToken = saved;
+    return { ...r, ok: r.status === 401 };
+  });
+
+  await test('POST /feedback/admin/facts/:factId/reverify without token -> 401', async () => {
+    const saved = authToken;
+    authToken = '';
+    const r = await req('POST', `${API}/feedback/admin/facts/${uuid}/reverify`, { verificationStatus: 'VERIFIED' });
+    authToken = saved;
+    return { ...r, ok: r.status === 401 };
+  });
+}
+
 async function testAnalytics() {
   await test('GET /analytics/dashboard', async () => {
     const r = await req('GET', `${API}/analytics/dashboard`);
@@ -547,6 +575,7 @@ async function main() {
   await testNearby();
   await testLocalBusinesses();
   await testCrowd();
+  await testFeedbackAdminAccess();
 
   if (authToken) {
     await testUsers();

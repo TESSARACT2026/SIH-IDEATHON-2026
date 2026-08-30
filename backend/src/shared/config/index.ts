@@ -29,6 +29,7 @@ const envSchema = z.object({
   ACCESS_TOKEN_EXPIRY: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRY_DAYS: z.coerce.number().default(7),
   COOKIE_DOMAIN: z.string().optional(),
+  ADMIN_EMAILS: z.string().default(''),
 
   // App
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

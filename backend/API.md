@@ -42,6 +42,9 @@ the route level. Users, feedback, favorites, authenticated trip operations, and
 analytics require a valid bearer token. Knowledge, attractions, live data,
 planner, NLU, services, and public trip-share routes are reachable anonymously.
 
+Admin review endpoints require both a valid bearer token and the user's email
+in the comma-separated `ADMIN_EMAILS` environment variable.
+
 ## Endpoint Summary
 
 | Method | Endpoint | Auth | Purpose |
@@ -63,6 +66,9 @@ planner, NLU, services, and public trip-share routes are reachable anonymously.
 | POST | `/api/v1/nlu/extract` | No | Extract trip preferences from free text with Gemini or keyword fallback. |
 | POST | `/api/v1/nlu/narrate` | No | Generate itinerary narration with fact-marker validation. |
 | POST | `/api/v1/feedback` | Yes | Validate and queue feedback response for review. |
+| GET | `/api/v1/feedback/admin/review-queue` | Admin | List feedback awaiting review. |
+| PATCH | `/api/v1/feedback/admin/:id/review` | Admin | Resolve feedback and optionally update a fact's verification status. |
+| POST | `/api/v1/feedback/admin/facts/:factId/reverify` | Admin | Record a manual fact re-verification result. |
 | GET | `/api/v1/crowd/attractions/:attractionId` | No | Get latest crowd signal for an attraction. |
 | POST | `/api/v1/crowd/reports` | Yes | Submit a community crowd report. |
 | GET | `/api/v1/favorites` | Yes | List current user's saved attractions. |
@@ -250,6 +256,34 @@ Allowed values:
 Feedback is stored with `PENDING` status for manual review. Submitting feedback
 does not automatically downgrade or rewrite trusted facts.
 
+`GET /api/v1/feedback/admin/review-queue?status=PENDING&limit=20`
+
+- `status`: `PENDING`, `REVIEWED`, `ACCEPTED`, or `REJECTED`; defaults to `PENDING`.
+- `limit`: 1-50 items; defaults to 20.
+
+`PATCH /api/v1/feedback/admin/:id/review`
+
+```json
+{
+  "status": "ACCEPTED",
+  "factVerificationStatus": "DISPUTED",
+  "notes": "Official source needs recheck before restoring verified status."
+}
+```
+
+`factVerificationStatus` is optional and only valid when the feedback targets a
+fact. When provided, the backend updates the fact, refreshes `lastChecked`, and
+writes a `VerificationRecord`.
+
+`POST /api/v1/feedback/admin/facts/:factId/reverify`
+
+```json
+{
+  "verificationStatus": "VERIFIED",
+  "notes": "Confirmed against official tourism source."
+}
+```
+
 ### Crowd
 
 `GET /api/v1/crowd/attractions/lingaraj-temple`
@@ -369,6 +403,5 @@ the raw `shareToken`.
 ## Current Gaps
 
 - Backend auth endpoints documented previously do not exist; use Supabase auth.
-- No backend endpoints exist yet for guide content, emergency contacts, admin
-  feedback review, fact re-verification, budget tracking, PDF export, or
-  server-side audio generation.
+- No backend endpoints exist yet for guide content, emergency contacts, budget
+  tracking, PDF export, or server-side audio generation.
