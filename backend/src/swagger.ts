@@ -259,6 +259,14 @@ export const openApiDocument = {
         description: 'Resource not found.',
         content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiError' } } },
       },
+      Conflict: {
+        description: 'Resource is not ready for the requested operation.',
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiError' } } },
+      },
+      Pdf: {
+        description: 'PDF document.',
+        content: { 'application/pdf': { schema: { type: 'string', format: 'binary' } } },
+      },
     },
   },
   security: [],
@@ -519,6 +527,15 @@ export const openApiDocument = {
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
       },
     },
+    '/api/v1/trips/{id}/export': {
+      get: {
+        security: bearerSecurity,
+        tags: ['Trips'],
+        summary: 'Export owned trip itinerary as PDF',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { $ref: '#/components/responses/Pdf' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } },
+      },
+    },
     '/api/v1/trips/share/{token}': {
       get: {
         tags: ['Trips'],
@@ -526,6 +543,15 @@ export const openApiDocument = {
         security: [],
         parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string', minLength: 8, maxLength: 128 } }],
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/trips/share/{token}/export': {
+      get: {
+        tags: ['Trips'],
+        summary: 'Export public shared trip itinerary as PDF',
+        security: [],
+        parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string', minLength: 8, maxLength: 128 } }],
+        responses: { '200': { $ref: '#/components/responses/Pdf' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } },
       },
     },
     '/api/v1/services/exchange-rates': {

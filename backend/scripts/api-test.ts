@@ -22,6 +22,7 @@ interface Result {
 const results: Result[] = [];
 let authToken  = process.env.API_TEST_BEARER_TOKEN ?? '';
 let tripId     = '';
+let shareToken = '';
 let attrId     = '';
 let destId     = 'bhubaneswar-odisha'; // legacy frontend slug, resolved by backend
 
@@ -74,6 +75,21 @@ async function req(
   let parsed: unknown;
   try { parsed = await res.json(); } catch { parsed = {}; }
   return { ok: res.ok, status: res.status, body: parsed };
+}
+
+async function reqRaw(
+  method: string,
+  url: string,
+  headers: Record<string, string> = {}
+): Promise<{ ok: boolean; status: number; body: ArrayBuffer; headers: Headers }> {
+  const res = await fetch(url, {
+    method,
+    headers: {
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...headers,
+    },
+  });
+  return { ok: res.ok, status: res.status, body: await res.arrayBuffer(), headers: res.headers };
 }
 
 // ─── Test Suites ─────────────────────────────────────────────────────────────
@@ -416,6 +432,11 @@ async function testPublicTripShare() {
     const r = await req('GET', `${API}/trips/share/short`);
     return { ...r, ok: r.status === 400 };
   });
+
+  await test('GET /trips/share/:token/export invalid token -> 400', async () => {
+    const r = await req('GET', `${API}/trips/share/short/export`);
+    return { ...r, ok: r.status === 400 };
+  });
 }
 
 async function testSearch() {
@@ -547,9 +568,57 @@ async function testTrips() {
     return req('GET', `${API}/trips/${tripId}`);
   });
 
+  await test('GET /trips/:id/export without snapshot -> 409', async () => {
+    if (!tripId) return { ok: false, status: 0, body: {} };
+    const r = await req('GET', `${API}/trips/${tripId}/export`);
+    return { ...r, ok: r.status === 409 };
+  });
+
+  await test('POST /trips/:id/snapshot', async () => {
+    if (!tripId) return { ok: false, status: 0, body: {} };
+    return req('POST', `${API}/trips/${tripId}/snapshot`, {
+      itinerarySnapshot: {
+        destinationId: destId,
+        days: 1,
+        itineraryItems: [
+          { dayNumber: 1, sequence: 1, attractionName: 'Lingaraj Temple', startTime: '09:00', endTime: '10:30', explanationText: 'Heritage stop from the saved API smoke itinerary.' },
+        ],
+      },
+    });
+  });
+
+  await test('GET /trips/:id/export PDF', async () => {
+    if (!tripId) return { ok: false, status: 0, body: {} };
+    const r = await reqRaw('GET', `${API}/trips/${tripId}/export`);
+    const header = new Uint8Array(r.body.slice(0, 5));
+    const startsWithPdf = header[0] === 37 && header[1] === 80 && header[2] === 68 && header[3] === 70 && header[4] === 45;
+    return { ok: r.ok && r.headers.get('content-type')?.includes('application/pdf') === true && startsWithPdf, status: r.status, body: {} };
+  });
+
   await test('PATCH /trips/:id (update status)', async () => {
     if (!tripId) return { ok: false, status: 0, body: {} };
     return req('PATCH', `${API}/trips/${tripId}`, { status: 'PLANNED' });
+  });
+
+  await test('PATCH /trips/:id (enable public share)', async () => {
+    if (!tripId) return { ok: false, status: 0, body: {} };
+    const r = await req('PATCH', `${API}/trips/${tripId}`, { isPublic: true });
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    if (r.ok) shareToken = data.shareToken as string;
+    if (r.ok && !shareToken) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /trips/share/:token/export PDF', async () => {
+    if (!shareToken) return { ok: false, status: 0, body: {} };
+    const saved = authToken;
+    authToken = '';
+    const r = await reqRaw('GET', `${API}/trips/share/${shareToken}/export`);
+    authToken = saved;
+    const header = new Uint8Array(r.body.slice(0, 5));
+    const startsWithPdf = header[0] === 37 && header[1] === 80 && header[2] === 68 && header[3] === 70 && header[4] === 45;
+    return { ok: r.ok && r.headers.get('content-type')?.includes('application/pdf') === true && startsWithPdf, status: r.status, body: {} };
   });
 
   await test('PATCH /trips/:id invalid dates -> 400', async () => {

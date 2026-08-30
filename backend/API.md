@@ -77,10 +77,12 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/trips` | Yes | List current user's trips. |
 | POST | `/api/v1/trips` | Yes | Create a trip. |
 | GET | `/api/v1/trips/:id` | Yes | Get a trip owned by the current user. |
+| GET | `/api/v1/trips/:id/export` | Yes | Export a saved trip itinerary snapshot as PDF. |
 | PATCH | `/api/v1/trips/:id` | Yes | Update trip metadata and sharing state. |
 | POST | `/api/v1/trips/:id/snapshot` | Yes | Save a frozen itinerary snapshot on a trip. |
 | DELETE | `/api/v1/trips/:id` | Yes | Delete a trip owned by the current user. |
 | GET | `/api/v1/trips/share/:token` | No | Public shared trip lookup. |
+| GET | `/api/v1/trips/share/:token/export` | No | Export a public shared trip itinerary snapshot as PDF. |
 | GET | `/api/v1/services/exchange-rates` | No | INR exchange rates with 24-hour cache. |
 | GET | `/api/v1/services/holidays` | No | Public holidays with 30-day cache. |
 | GET | `/api/v1/services/country-info/:code` | No | Country metadata with 30-day cache. |
@@ -359,6 +361,15 @@ Adding a duplicate favorite is safe; the backend uses an upsert.
 }
 ```
 
+`GET /api/v1/trips/:id/export`
+
+Returns `application/pdf` for the current user's saved `itinerarySnapshot`.
+
+`GET /api/v1/trips/share/:token/export`
+
+Returns the same PDF export for public shared trips. Export responses never
+include owner IDs, owner email, or share tokens inside the document.
+
 Trip `:id` params must be UUIDs. `destinationId` accepts UUIDs and legacy
 frontend destination slugs.
 `status` values are `DRAFT`, `PLANNED`, `ACTIVE`, and `COMPLETED`. `endDate`
@@ -451,4 +462,4 @@ with warnings but excluded from the total.
 ## Current Gaps
 
 - Backend auth endpoints documented previously do not exist; use Supabase auth.
-- No backend endpoints exist yet for PDF export or server-side audio generation.
+- No backend endpoint exists yet for server-side audio generation.

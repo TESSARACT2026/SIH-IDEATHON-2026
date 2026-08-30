@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { randomBytes } from 'crypto';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../shared/db/index.js';
 import { requireAuth } from '../../shared/middleware/auth.js';
@@ -67,10 +68,171 @@ function assertValidTripDates(startDate: Date, endDate: Date): void {
   }
 }
 
+function pdfEscape(value: string): string {
+  return value.replace(/[\\()]/g, '\\$&').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+}
+
+function wrapLine(value: string, max = 86): string[] {
+  const words = value.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = '';
+
+  for (const word of words) {
+    if (!line) {
+      line = word;
+    } else if (`${line} ${word}`.length <= max) {
+      line += ` ${word}`;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+
+  return line ? [...lines, line] : [''];
+}
+
+function createTextPdf(lines: string[]): Buffer {
+  const pageLines = lines.flatMap((line) => wrapLine(line));
+  const pages = Array.from({ length: Math.max(1, Math.ceil(pageLines.length / 48)) }, (_, index) =>
+    pageLines.slice(index * 48, index * 48 + 48)
+  );
+  const fontObject = 3 + pages.length * 2;
+  const objects: string[] = [
+    `1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n`,
+    `2 0 obj\n<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(' ')}] /Count ${pages.length} >>\nendobj\n`,
+  ];
+
+  for (let index = 0; index < pages.length; index++) {
+    const pageObject = 3 + index * 2;
+    const contentObject = pageObject + 1;
+    const body = [
+      'BT',
+      '/F1 12 Tf',
+      '14 TL',
+      '50 790 Td',
+      ...pages[index].map((line) => `(${pdfEscape(line)}) Tj T*`),
+      'ET',
+    ].join('\n');
+    const stream = `${body}\n`;
+
+    objects.push(`${pageObject} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 ${fontObject} 0 R >> >> /Contents ${contentObject} 0 R >>\nendobj\n`);
+    objects.push(`${contentObject} 0 obj\n<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}endstream\nendobj\n`);
+  }
+
+  objects.push(`${fontObject} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`);
+
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const object of objects) {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += object;
+  }
+  const xrefOffset = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  pdf += offsets.slice(1).map((offset) => `${offset.toString().padStart(10, '0')} 00000 n \n`).join('');
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+
+  return Buffer.from(pdf);
+}
+
+function objectValue(value: Prisma.JsonValue | null | undefined): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function arrayValue(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item)) : [];
+}
+
+function textValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function exportFileName(title: string): string {
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+  return `${slug || 'trip'}-itinerary.pdf`;
+}
+
+function itineraryLinesFromSnapshot(snapshot: Prisma.JsonValue | null | undefined): string[] {
+  const plan = objectValue(snapshot);
+  const items = arrayValue(plan?.itineraryItems ?? plan?.items);
+  if (items.length === 0) return ['No itinerary items saved yet.'];
+
+  return items.flatMap((item) => {
+    const day = item.dayNumber ?? item.day;
+    const attraction = textValue(item.attractionName) ?? textValue(item.name) ?? textValue(item.entityId) ?? 'Stop';
+    const time = [textValue(item.startTime), textValue(item.endTime)].filter(Boolean).join(' - ');
+    const note = textValue(item.explanationText) ?? textValue(item.description);
+    return [
+      `Day ${typeof day === 'number' ? day : '?'}: ${time ? `${time} - ` : ''}${attraction}`,
+      ...(note ? [`  ${note}`] : []),
+    ];
+  });
+}
+
+function buildTripPdf(trip: {
+  title: string;
+  startDate: Date;
+  endDate: Date;
+  destination: { name: string; region: string | null; country: string };
+  itinerarySnapshot: Prisma.JsonValue | null;
+}): Buffer {
+  const destination = [trip.destination.name, trip.destination.region, trip.destination.country].filter(Boolean).join(', ');
+  const lines = [
+    trip.title,
+    `Destination: ${destination}`,
+    `Dates: ${trip.startDate.toISOString().slice(0, 10)} to ${trip.endDate.toISOString().slice(0, 10)}`,
+    '',
+    'Itinerary',
+    ...itineraryLinesFromSnapshot(trip.itinerarySnapshot),
+  ];
+
+  return createTextPdf(lines);
+}
+
+function sendTripPdf(res: import('express').Response, trip: {
+  title: string;
+  startDate: Date;
+  endDate: Date;
+  destination: { name: string; region: string | null; country: string };
+  itinerarySnapshot: Prisma.JsonValue | null;
+}) {
+  if (!trip.itinerarySnapshot) {
+    throw new AppError('Trip has no saved itinerary snapshot to export', 409, 'ITINERARY_NOT_READY');
+  }
+
+  const pdf = buildTripPdf(trip);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${exportFileName(trip.title)}"`);
+  res.setHeader('Content-Length', pdf.length.toString());
+  res.send(pdf);
+}
+
 // ─── Public Share Route (Feature 2) ─────────────────────────────────────────
 // GET /api/v1/trips/share/:token — NO AUTH REQUIRED, rate-limited
 // Returns only trips with is_public=true and matching share_token
 // NEVER leaks owner email/userId
+
+router.get('/share/:token/export', globalLimiter, async (req, res, next) => {
+  try {
+    const { token } = shareTokenParamSchema.parse(req.params);
+    const trip = await prisma.trip.findUnique({
+      where: { shareToken: token },
+      include: { destination: { select: { name: true, region: true, country: true } } },
+    });
+
+    if (!trip || !trip.isPublic) {
+      throw new AppError('Shared trip not found or is no longer public', 404, 'NOT_FOUND');
+    }
+
+    sendTripPdf(res, trip);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid share token', details: err.flatten().fieldErrors } });
+      return;
+    }
+    next(err);
+  }
+});
 
 router.get('/share/:token', globalLimiter, async (req, res, next) => {
   try {
@@ -100,6 +262,27 @@ router.get('/share/:token', globalLimiter, async (req, res, next) => {
 });
 
 // ─── Authenticated Routes ────────────────────────────────────────────────────
+
+router.get('/:id/export', requireAuth, async (req, res, next) => {
+  try {
+    const { id } = uuidParamSchema.parse(req.params);
+    const userId = req.user!.userId;
+    const trip = await prisma.trip.findUnique({
+      where: { id },
+      include: { destination: { select: { name: true, region: true, country: true } } },
+    });
+
+    if (!trip || trip.userId !== userId) throw new AppError('Trip not found', 404, 'NOT_FOUND');
+
+    sendTripPdf(res, trip);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid trip ID', details: err.flatten().fieldErrors } });
+      return;
+    }
+    next(err);
+  }
+});
 
 // GET /api/v1/trips — list user's trips
 router.get('/', requireAuth, async (req, res, next) => {
