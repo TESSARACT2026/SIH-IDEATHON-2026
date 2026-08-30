@@ -86,6 +86,8 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/services/country-info/:code` | No | Country metadata with 30-day cache. |
 | GET | `/api/v1/services/safety-pulse` | No | India travel safety pulse with fallback data. |
 | GET | `/api/v1/emergency` | No | India emergency contacts, optionally destination-aware. |
+| GET | `/api/v1/guide/destinations/:id` | No | Structured destination travel guide from stored trusted data. |
+| GET | `/api/v1/guide/attractions/:id` | No | Structured attraction guide with provenance, crowd, and sensitivity data. |
 | GET | `/api/v1/analytics/dashboard` | Yes | Platform counts and fact accuracy percentage. |
 | GET | `/api/v1/search` | No | Search destinations and attractions by text. |
 | GET | `/api/v1/nearby` | No | Find attractions near a coordinate. |
@@ -383,6 +385,18 @@ the raw `shareToken`.
 The response includes national emergency numbers and adds regional contacts for
 destinations where official state sources are mapped.
 
+### Guide
+
+`GET /api/v1/guide/destinations/bhubaneswar-odisha`
+
+`GET /api/v1/guide/attractions/lingaraj-temple`
+
+Destination and attraction IDs accept UUIDs and legacy frontend slugs. Guide
+responses are structured from stored database records and include fact sources,
+verification status, latest crowd signal, sensitivity flags, accessibility
+fields, and missing-trusted-fact warnings. The guide API does not generate or
+invent travel claims.
+
 ### Search
 
 `GET /api/v1/search?q=temple&type=all&limit=10`
@@ -414,5 +428,5 @@ destinations where official state sources are mapped.
 ## Current Gaps
 
 - Backend auth endpoints documented previously do not exist; use Supabase auth.
-- No backend endpoints exist yet for guide content, budget tracking, PDF export,
-  or server-side audio generation.
+- No backend endpoints exist yet for budget tracking, PDF export, or server-side
+  audio generation.

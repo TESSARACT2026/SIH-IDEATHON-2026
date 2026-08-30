@@ -356,6 +356,31 @@ async function testEmergency() {
   });
 }
 
+async function testGuide() {
+  await test('GET /guide/destinations/:id', async () => {
+    const r = await req('GET', `${API}/guide/destinations/bhubaneswar-odisha`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    const attractions = data.attractions as unknown[];
+    if (r.ok && (!Array.isArray(attractions) || attractions.length === 0)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /guide/attractions/:id', async () => {
+    const r = await req('GET', `${API}/guide/attractions/lingaraj-temple`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    const facts = data.facts as unknown[];
+    if (r.ok && (!Array.isArray(facts) || facts.length === 0)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /guide/attractions/:id unknown -> 404', async () => {
+    const r = await req('GET', `${API}/guide/attractions/nonexistent-attraction`);
+    return { ...r, ok: r.status === 404 };
+  });
+}
+
 async function testPublicTripShare() {
   await test('GET /trips/share/:token invalid token -> 400', async () => {
     const r = await req('GET', `${API}/trips/share/short`);
@@ -597,6 +622,7 @@ async function main() {
   await testLiveData();
   await testServices();
   await testEmergency();
+  await testGuide();
   await testPublicTripShare();
   await testSearch();
   await testNearby();

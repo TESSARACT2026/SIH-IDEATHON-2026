@@ -22,6 +22,7 @@ export const openApiDocument = {
     { name: 'Trips' },
     { name: 'Services' },
     { name: 'Emergency' },
+    { name: 'Guide' },
     { name: 'Analytics' },
     { name: 'Search' },
     { name: 'Nearby' },
@@ -550,6 +551,24 @@ export const openApiDocument = {
           { name: 'countryCode', in: 'query', schema: { type: 'string', minLength: 2, maxLength: 2, default: 'IN' } },
           { name: 'destinationId', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' },
         ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/guide/destinations/{id}': {
+      get: {
+        tags: ['Guide'],
+        summary: 'Structured destination travel guide',
+        security: [],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/guide/attractions/{id}': {
+      get: {
+        tags: ['Guide'],
+        summary: 'Structured attraction guide',
+        security: [],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' }],
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
       },
     },
