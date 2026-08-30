@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../shared/db/index.js';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { AppError } from '../../shared/middleware/errorHandler.js';
+import { resolveAttractionId } from '../../shared/utils/idAliases.js';
 
 const router = Router();
 
@@ -10,11 +11,11 @@ const router = Router();
 router.use(requireAuth);
 
 const addFavoriteSchema = z.object({
-  attractionId: z.string().min(1).max(100), // supports both UUID and slug IDs
+  attractionId: z.string().min(1).max(100),
 }).strict();
 
 const paramSchema = z.object({
-  attractionId: z.string().min(1).max(100), // supports both UUID and slug IDs
+  attractionId: z.string().min(1).max(100),
 }).strict();
 
 // GET /api/v1/favorites — list user's favorites
@@ -62,7 +63,8 @@ router.get('/', async (req, res, next) => {
 // POST /api/v1/favorites — add a favorite
 router.post('/', async (req, res, next) => {
   try {
-    const { attractionId } = addFavoriteSchema.parse(req.body);
+    const { attractionId: rawAttractionId } = addFavoriteSchema.parse(req.body);
+    const attractionId = resolveAttractionId(rawAttractionId);
     const userId = req.user!.userId;
 
     // Verify attraction exists
@@ -105,7 +107,8 @@ router.post('/', async (req, res, next) => {
 // DELETE /api/v1/favorites/:attractionId — remove a favorite
 router.delete('/:attractionId', async (req, res, next) => {
   try {
-    const { attractionId } = paramSchema.parse(req.params);
+    const { attractionId: rawAttractionId } = paramSchema.parse(req.params);
+    const attractionId = resolveAttractionId(rawAttractionId);
     const userId = req.user!.userId;
 
     await prisma.favorite.deleteMany({

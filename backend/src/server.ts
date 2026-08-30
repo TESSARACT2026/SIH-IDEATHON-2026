@@ -86,6 +86,10 @@ import favoritesRouter from './modules/favorites/index.js';
 import tripsRouter from './modules/trips/index.js';
 import servicesRouter from './modules/services/index.js';
 import analyticsRouter from './modules/analytics/index.js';
+import searchRouter from './modules/search/index.js';
+import nearbyRouter from './modules/nearby/index.js';
+import localBusinessesRouter from './modules/local-businesses/index.js';
+import crowdRouter from './modules/crowd/index.js';
 
 // ─── API v1 Routes ──────────────────────────────────────────────────────────
 app.use('/api/v1/users', usersRouter);
@@ -99,6 +103,10 @@ app.use('/api/v1/favorites', favoritesRouter);
 app.use('/api/v1/trips', tripsRouter);
 app.use('/api/v1/services', servicesRouter);
 app.use('/api/v1/analytics', analyticsRouter);
+app.use('/api/v1/search', searchRouter);
+app.use('/api/v1/nearby', nearbyRouter);
+app.use('/api/v1/local-businesses', localBusinessesRouter);
+app.use('/api/v1/crowd', crowdRouter);
 
 // ─── 404 Handler ────────────────────────────────────────────────────────────
 app.use((_req, res) => {

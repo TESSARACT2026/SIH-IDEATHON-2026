@@ -7,6 +7,8 @@ import { AppError } from '../../shared/middleware/errorHandler.js';
 import { getHolidays } from '../services/index.js';
 import { getRoute } from '../live-data/routing.js';
 import { getWeatherWarnings } from '../live-data/weather.js';
+import { optionalAuth } from '../../shared/middleware/auth.js';
+import { resolveDestinationId } from '../../shared/utils/idAliases.js';
 
 const router = Router();
 
@@ -16,10 +18,12 @@ const VISIT_DURATION_MINUTES = 120;
 const ROUTING_FALLBACK_MINUTES = 20;
 
 const plannerInputSchema = z.object({
-  destinationId: z.string().min(1).max(100), // supports both UUID and slug IDs
+  destinationId: z.string().min(1).max(100),
   startDate: z.string().datetime(),
-  endDate: z.string().datetime().optional(), // optional convenience field, ignored by engine
+  endDate: z.string().datetime().optional(),
   days: z.number().int().min(1).max(14),
+  title: z.string().min(1).max(200).optional(),
+  saveTrip: z.boolean().default(false).optional(),
   preferences: z.object({
     pace: z.enum(['RELAXED', 'MODERATE', 'PACKED']).default('MODERATE'),
     accessibilityWheelchair: z.boolean().default(false),
@@ -116,6 +120,19 @@ const buildTrustSummary = (attraction: PlannerAttraction, warnings: string[]) =>
     facts,
     warnings,
   };
+};
+
+type ItineraryItem = {
+  dayNumber: number;
+  sequence: number;
+  entityType: string;
+  entityId: string;
+  attractionName: string;
+  startTime: string;
+  endTime: string;
+  travelBufferMinutesBefore: number;
+  factIds: string[];
+  trustSummary: ReturnType<typeof buildTrustSummary>;
 };
 
 const openingWindow = (attraction: PlannerAttraction, warnings: string[]) => {
@@ -286,10 +303,31 @@ const sortCandidates = async (input: PlannerInput, warnings: string[]) => {
     });
 };
 
-router.post('/generate', async (req, res, next) => {
+const tripEndDate = (input: PlannerInput, tripStart: Date) => {
+  if (input.endDate) return new Date(input.endDate);
+
+  const tripEnd = new Date(tripStart);
+  tripEnd.setDate(tripStart.getDate() + input.days - 1);
+  tripEnd.setHours(18, 0, 0, 0);
+  return tripEnd;
+};
+
+router.post('/generate', optionalAuth, async (req, res, next) => {
   try {
-    const input = plannerInputSchema.parse(req.body);
+    const parsedInput = plannerInputSchema.parse(req.body);
+    const input = { ...parsedInput, destinationId: resolveDestinationId(parsedInput.destinationId) };
     const tripStart = new Date(input.startDate);
+    const saveTrip = input.saveTrip === true;
+
+    if (saveTrip && !req.user) {
+      throw new AppError('Authentication required to save generated trips', 401, 'UNAUTHORIZED');
+    }
+
+    const endDate = tripEndDate(input, tripStart);
+    if (saveTrip && endDate <= tripStart) {
+      throw new AppError('End date must be after start date', 400, 'INVALID_DATES');
+    }
+
     const warnings: string[] = [];
     const excluded: Exclusion[] = [];
 
@@ -337,7 +375,7 @@ router.post('/generate', async (req, res, next) => {
       throw new AppError('No matching attractions found for these preferences', 404, 'NO_ATTRACTIONS');
     }
 
-    const itineraryItems = [];
+    const itineraryItems: ItineraryItem[] = [];
     const maxItemsPerDay = paceLimit(input.preferences.pace);
     const usedCandidateIds = new Set<string>();
     const excludedCandidateIds = new Set<string>();
@@ -394,15 +432,57 @@ router.post('/generate', async (req, res, next) => {
       warnings.push('No attractions could be scheduled within the selected constraints');
     }
 
-    res.json({
-      data: {
-        destinationId: input.destinationId,
-        days: input.days,
-        itineraryItems,
-        excluded,
-        warnings,
-      },
-    });
+    const plan = {
+      destinationId: input.destinationId,
+      days: input.days,
+      itineraryItems,
+      excluded,
+      warnings,
+    };
+
+    const savedTrip = saveTrip
+      ? await prisma.$transaction(async (tx) => {
+          const trip = await tx.trip.create({
+            data: {
+              userId: req.user!.userId,
+              destinationId: input.destinationId,
+              title: input.title ?? 'Generated Trip',
+              startDate: tripStart,
+              endDate,
+              status: 'PLANNED',
+              itinerarySnapshot: plan as Prisma.InputJsonValue,
+            },
+          });
+
+          const itinerary = await tx.itinerary.create({
+            data: {
+              tripId: trip.id,
+              rawPlan: plan as Prisma.InputJsonValue,
+              validated: true,
+            },
+          });
+
+          if (itineraryItems.length > 0) {
+            await tx.itineraryItem.createMany({
+              data: itineraryItems.map((item) => ({
+                itineraryId: itinerary.id,
+                dayNumber: item.dayNumber,
+                sequence: item.sequence,
+                startTime: item.startTime,
+                endTime: item.endTime,
+                entityType: item.entityType,
+                entityId: item.entityId,
+                travelBufferMinutesBefore: item.travelBufferMinutesBefore,
+                trustSummary: item.trustSummary as Prisma.InputJsonValue,
+              })),
+            });
+          }
+
+          return { tripId: trip.id, itineraryId: itinerary.id };
+        })
+      : undefined;
+
+    res.json({ data: { ...plan, ...(savedTrip ? { savedTrip } : {}) } });
   } catch (err) {
     next(err);
   }

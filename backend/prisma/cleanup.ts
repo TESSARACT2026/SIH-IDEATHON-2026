@@ -1,8 +1,14 @@
 import { PrismaClient } from '@prisma/client';
+import dotenv from 'dotenv';
+import path from 'path';
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
+
 const prisma = new PrismaClient();
 
 async function main() {
-  const stableIds = ['dest-bhubaneswar', 'dest-puri', 'dest-konark', 'dest-jaipur', 'dest-varanasi'];
+  const stableIds = ['00000000-0000-4000-8000-000000001001', '00000000-0000-4000-8000-000000001002', '00000000-0000-4000-8000-000000001003', '00000000-0000-4000-8000-000000001004', '00000000-0000-4000-8000-000000001005'];
   
   const dupes = await prisma.destination.findMany({
     where: { id: { notIn: stableIds } }

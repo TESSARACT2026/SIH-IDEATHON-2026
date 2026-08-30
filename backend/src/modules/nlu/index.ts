@@ -23,9 +23,8 @@ function sandboxUserInput(rawInput: string): string {
 
 // ─── Gemini API Helper ───────────────────────────────────────────────────────
 // Calls the Gemini REST API directly (no SDK dependency needed).
-async function callGemini(systemInstruction: string, userContent: string): Promise<string> {
-  const GEMINI_MODEL = 'gemini-2.0-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`;
+async function callGemini(systemInstruction: string, userContent: string, responseMimeType?: string): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`;
 
   const body = {
     system_instruction: {
@@ -40,7 +39,7 @@ async function callGemini(systemInstruction: string, userContent: string): Promi
     generationConfig: {
       temperature: 0.2,       // Low temp for structured extraction
       maxOutputTokens: 1024,
-      responseMimeType: 'application/json',
+      ...(responseMimeType ? { responseMimeType } : {}),
     },
     safetySettings: [
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -127,7 +126,7 @@ Return ONLY a valid JSON object with these exact keys:
 
 Respond with ONLY the JSON object, no explanation, no markdown, no code fences.`;
 
-      const raw = await callGemini(systemInstruction, sandboxedPrompt);
+      const raw = await callGemini(systemInstruction, sandboxedPrompt, 'application/json');
       // Strip any accidental markdown fences Gemini might add
       const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
       const geminiResult = JSON.parse(cleaned);

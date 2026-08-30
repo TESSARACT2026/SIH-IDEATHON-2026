@@ -1,3 +1,5 @@
+const bearerSecurity = [{ bearerAuth: [] }] as const;
+
 export const openApiDocument = {
   openapi: '3.1.0',
   info: {
@@ -15,10 +17,14 @@ export const openApiDocument = {
     { name: 'Planner' },
     { name: 'NLU' },
     { name: 'Feedback' },
+    { name: 'Crowd' },
     { name: 'Favorites' },
     { name: 'Trips' },
     { name: 'Services' },
     { name: 'Analytics' },
+    { name: 'Search' },
+    { name: 'Nearby' },
+    { name: 'Local Businesses' },
   ],
   components: {
     securitySchemes: {
@@ -84,10 +90,12 @@ export const openApiDocument = {
         additionalProperties: false,
         required: ['destinationId', 'startDate', 'days', 'preferences'],
         properties: {
-          destinationId: { type: 'string', minLength: 1, maxLength: 100 },
+          destinationId: { type: 'string', minLength: 1, maxLength: 100, description: 'UUID or legacy frontend slug.' },
+          title: { type: 'string', minLength: 1, maxLength: 200 },
           startDate: { type: 'string', format: 'date-time' },
           endDate: { type: 'string', format: 'date-time' },
           days: { type: 'integer', minimum: 1, maximum: 14 },
+          saveTrip: { type: 'boolean', default: false },
           preferences: {
             type: 'object',
             additionalProperties: false,
@@ -142,24 +150,34 @@ export const openApiDocument = {
         additionalProperties: false,
         required: ['entityId', 'entityType', 'feedbackType'],
         properties: {
-          entityId: { type: 'string', minLength: 1, maxLength: 100 },
+          entityId: { type: 'string', minLength: 1, maxLength: 100, description: 'UUID; attraction feedback also accepts legacy frontend attraction slugs.' },
           entityType: { type: 'string', enum: ['ATTRACTION', 'FACT', 'CROWD_RECORD'] },
           feedbackType: { type: 'string', enum: ['INACCURATE', 'OUTDATED', 'OTHER'] },
           comment: { type: 'string', maxLength: 500 },
+        },
+      },
+      CrowdReportRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['attractionId', 'currentCrowdLevel'],
+        properties: {
+          attractionId: { type: 'string', minLength: 1, maxLength: 100, description: 'UUID or legacy frontend slug.' },
+          currentCrowdLevel: { type: 'string', enum: ['LOW', 'MODERATE', 'HIGH', 'SEVERE'] },
+          capacityValue: { type: 'integer', minimum: 0, maximum: 100000 },
         },
       },
       FavoriteRequest: {
         type: 'object',
         additionalProperties: false,
         required: ['attractionId'],
-        properties: { attractionId: { type: 'string', minLength: 1, maxLength: 100 } },
+        properties: { attractionId: { type: 'string', minLength: 1, maxLength: 100, description: 'UUID or legacy frontend slug.' } },
       },
       TripCreateRequest: {
         type: 'object',
         additionalProperties: false,
         required: ['destinationId', 'startDate', 'endDate'],
         properties: {
-          destinationId: { type: 'string', minLength: 1, maxLength: 100 },
+          destinationId: { type: 'string', minLength: 1, maxLength: 100, description: 'UUID or legacy frontend slug.' },
           title: { type: 'string', minLength: 1, maxLength: 200, default: 'My Trip' },
           startDate: { type: 'string', format: 'date-time' },
           endDate: { type: 'string', format: 'date-time' },
@@ -207,7 +225,7 @@ export const openApiDocument = {
       },
     },
   },
-  security: [{ bearerAuth: [] }],
+  security: [],
   paths: {
     '/api/health': {
       get: {
@@ -218,8 +236,9 @@ export const openApiDocument = {
       },
     },
     '/api/v1/users/me': {
-      get: { tags: ['Users'], summary: 'Current user profile', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
+      get: { security: bearerSecurity, tags: ['Users'], summary: 'Current user profile', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
       patch: {
+        security: bearerSecurity,
         tags: ['Users'],
         summary: 'Update profile fields',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/UserProfileUpdate' } } } },
@@ -227,14 +246,16 @@ export const openApiDocument = {
       },
     },
     '/api/v1/users/me/preferences': {
-      get: { tags: ['Users'], summary: 'Current user preferences', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
+      get: { security: bearerSecurity, tags: ['Users'], summary: 'Current user preferences', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
       put: {
+        security: bearerSecurity,
         tags: ['Users'],
         summary: 'Upsert full preferences',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/UserPreferences' } } } },
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
       },
       patch: {
+        security: bearerSecurity,
         tags: ['Users'],
         summary: 'Partially update preferences',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/UserPreferences' } } } },
@@ -256,7 +277,7 @@ export const openApiDocument = {
       get: {
         tags: ['Knowledge'],
         summary: 'Get one destination',
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 } }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' }],
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
       },
     },
@@ -265,7 +286,7 @@ export const openApiDocument = {
         tags: ['Knowledge'],
         summary: 'List destination attractions',
         parameters: [
-          { name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' },
           { name: 'categories', in: 'query', schema: { type: 'string' }, description: 'Comma-separated category list.' },
           { name: 'accessibilityWheelchair', in: 'query', schema: { type: 'string', enum: ['true', 'false'] } },
           { name: 'indoorOutdoor', in: 'query', schema: { type: 'string', enum: ['indoor', 'outdoor', 'mixed'] } },
@@ -278,7 +299,7 @@ export const openApiDocument = {
       get: {
         tags: ['Attractions'],
         summary: 'Get attraction fact provenance',
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 } }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' }],
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
       },
     },
@@ -286,7 +307,7 @@ export const openApiDocument = {
       get: {
         tags: ['Attractions'],
         summary: 'Suggest similar attractions',
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 } }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' }],
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
       },
     },
@@ -317,6 +338,7 @@ export const openApiDocument = {
     },
     '/api/v1/planner/generate': {
       post: {
+        security: [{}, ...bearerSecurity],
         tags: ['Planner'],
         summary: 'Generate an itinerary',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/PlannerRequest' } } } },
@@ -341,15 +363,35 @@ export const openApiDocument = {
     },
     '/api/v1/feedback': {
       post: {
+        security: bearerSecurity,
         tags: ['Feedback'],
         summary: 'Queue feedback for review',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/FeedbackRequest' } } } },
         responses: { '201': { $ref: '#/components/responses/Created' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
       },
     },
-    '/api/v1/favorites': {
-      get: { tags: ['Favorites'], summary: 'List saved attractions', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
+    '/api/v1/crowd/attractions/{attractionId}': {
+      get: {
+        tags: ['Crowd'],
+        summary: 'Get latest crowd signal for an attraction',
+        security: [],
+        parameters: [{ name: 'attractionId', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/crowd/reports': {
       post: {
+        security: bearerSecurity,
+        tags: ['Crowd'],
+        summary: 'Submit a community crowd report',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CrowdReportRequest' } } } },
+        responses: { '201': { $ref: '#/components/responses/Created' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/favorites': {
+      get: { security: bearerSecurity, tags: ['Favorites'], summary: 'List saved attractions', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
+      post: {
+        security: bearerSecurity,
         tags: ['Favorites'],
         summary: 'Add attraction favorite',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/FavoriteRequest' } } } },
@@ -358,15 +400,17 @@ export const openApiDocument = {
     },
     '/api/v1/favorites/{attractionId}': {
       delete: {
+        security: bearerSecurity,
         tags: ['Favorites'],
         summary: 'Remove attraction favorite',
-        parameters: [{ name: 'attractionId', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 } }],
+        parameters: [{ name: 'attractionId', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' }],
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
       },
     },
     '/api/v1/trips': {
-      get: { tags: ['Trips'], summary: 'List current user trips', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
+      get: { security: bearerSecurity, tags: ['Trips'], summary: 'List current user trips', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
       post: {
+        security: bearerSecurity,
         tags: ['Trips'],
         summary: 'Create a trip',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/TripCreateRequest' } } } },
@@ -375,12 +419,14 @@ export const openApiDocument = {
     },
     '/api/v1/trips/{id}': {
       get: {
+        security: bearerSecurity,
         tags: ['Trips'],
         summary: 'Get owned trip',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
       },
       patch: {
+        security: bearerSecurity,
         tags: ['Trips'],
         summary: 'Update trip metadata and sharing',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
@@ -388,6 +434,7 @@ export const openApiDocument = {
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
       },
       delete: {
+        security: bearerSecurity,
         tags: ['Trips'],
         summary: 'Delete owned trip',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
@@ -396,6 +443,7 @@ export const openApiDocument = {
     },
     '/api/v1/trips/{id}/snapshot': {
       post: {
+        security: bearerSecurity,
         tags: ['Trips'],
         summary: 'Save an itinerary snapshot',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
@@ -438,7 +486,47 @@ export const openApiDocument = {
       get: { tags: ['Services'], summary: 'India travel safety pulse', responses: { '200': { $ref: '#/components/responses/Ok' } } },
     },
     '/api/v1/analytics/dashboard': {
-      get: { tags: ['Analytics'], summary: 'Platform dashboard metrics', responses: { '200': { $ref: '#/components/responses/Ok' } } },
+      get: { security: bearerSecurity, tags: ['Analytics'], summary: 'Platform dashboard metrics', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
+    },
+    '/api/v1/search': {
+      get: {
+        tags: ['Search'],
+        summary: 'Search destinations and attractions',
+        parameters: [
+          { name: 'q', in: 'query', required: true, schema: { type: 'string', minLength: 2, maxLength: 100 } },
+          { name: 'type', in: 'query', schema: { type: 'string', enum: ['all', 'destination', 'attraction'], default: 'all' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 20, default: 10 } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
+      },
+    },
+    '/api/v1/nearby': {
+      get: {
+        tags: ['Nearby'],
+        summary: 'Find attractions near a coordinate',
+        parameters: [
+          { name: 'lat', in: 'query', required: true, schema: { type: 'number', minimum: -90, maximum: 90 } },
+          { name: 'lon', in: 'query', required: true, schema: { type: 'number', minimum: -180, maximum: 180 } },
+          { name: 'radiusKm', in: 'query', schema: { type: 'number', minimum: 0.1, maximum: 100, default: 10 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 } },
+          { name: 'destinationId', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
+      },
+    },
+    '/api/v1/local-businesses': {
+      get: {
+        tags: ['Local Businesses'],
+        summary: 'Discover local businesses',
+        parameters: [
+          { name: 'destinationId', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' },
+          { name: 'category', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          { name: 'locallyOwned', in: 'query', schema: { type: 'string', enum: ['true', 'false'] } },
+          { name: 'search', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
+      },
     },
   },
 } as const;

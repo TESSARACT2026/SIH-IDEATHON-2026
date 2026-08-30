@@ -5,13 +5,14 @@ import { prisma } from '../../shared/db/index.js';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { AppError } from '../../shared/middleware/errorHandler.js';
 import { globalLimiter } from '../../shared/middleware/rateLimiter.js';
+import { resolveDestinationId } from '../../shared/utils/idAliases.js';
 
 const router = Router();
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
 const createTripSchema = z.object({
-  destinationId: z.string().min(1).max(100), // supports both UUID and slug IDs
+  destinationId: z.string().min(1).max(100),
   title: z.string().min(1).max(200).default('My Trip'),
   startDate: z.string().datetime(),
   endDate: z.string().datetime(),
@@ -50,13 +51,20 @@ function tripToPublic(trip: any) {
   return {
     id: trip.id,
     title: trip.title,
+    destinationId: trip.destinationId,
     destination: trip.destination,
-    startDate: trip.startDate,
-    endDate: trip.endDate,
+    startDate: trip.startDate.toISOString(),
+    endDate: trip.endDate.toISOString(),
     itinerarySnapshot: trip.itinerarySnapshot,
-    createdAt: trip.createdAt,
+    createdAt: trip.createdAt.toISOString(),
     // NOTE: userId, user email, shareToken are deliberately excluded
   };
+}
+
+function assertValidTripDates(startDate: Date, endDate: Date): void {
+  if (endDate <= startDate) {
+    throw new AppError('End date must be after start date', 400, 'INVALID_DATES');
+  }
 }
 
 // ─── Public Share Route (Feature 2) ─────────────────────────────────────────
@@ -187,18 +195,19 @@ router.get('/:id', requireAuth, async (req, res, next) => {
 // POST /api/v1/trips — create a new trip
 router.post('/', requireAuth, async (req, res, next) => {
   try {
-    const { destinationId, title, startDate, endDate, status } = createTripSchema.parse(req.body);
+    const { destinationId: rawDestinationId, title, startDate, endDate, status } = createTripSchema.parse(req.body);
+    const destinationId = resolveDestinationId(rawDestinationId);
     const userId = req.user!.userId;
 
     const destination = await prisma.destination.findUnique({ where: { id: destinationId } });
     if (!destination) throw new AppError('Destination not found', 404, 'NOT_FOUND');
 
-    if (new Date(endDate) <= new Date(startDate)) {
-      throw new AppError('End date must be after start date', 400, 'INVALID_DATES');
-    }
+    const tripStart = new Date(startDate);
+    const tripEnd = new Date(endDate);
+    assertValidTripDates(tripStart, tripEnd);
 
     const trip = await prisma.trip.create({
-      data: { userId, destinationId, title, startDate: new Date(startDate), endDate: new Date(endDate), status },
+      data: { userId, destinationId, title, startDate: tripStart, endDate: tripEnd, status },
       include: {
         destination: { select: { id: true, name: true, region: true, country: true } },
       },
@@ -237,16 +246,20 @@ router.patch('/:id', requireAuth, async (req, res, next) => {
     const existing = await prisma.trip.findUnique({ where: { id } });
     if (!existing || existing.userId !== userId) throw new AppError('Trip not found', 404, 'NOT_FOUND');
 
+    const nextStartDate = updates.startDate ? new Date(updates.startDate) : existing.startDate;
+    const nextEndDate = updates.endDate ? new Date(updates.endDate) : existing.endDate;
+    assertValidTripDates(nextStartDate, nextEndDate);
+
     const data: Record<string, unknown> = {};
     if (updates.title !== undefined) data.title = updates.title;
-    if (updates.startDate) data.startDate = new Date(updates.startDate);
-    if (updates.endDate) data.endDate = new Date(updates.endDate);
+    if (updates.startDate) data.startDate = nextStartDate;
+    if (updates.endDate) data.endDate = nextEndDate;
     if (updates.status) data.status = updates.status;
 
-    // Handle sharing: generate token when making public, null it when making private
-    if (updates.isPublic === true && !existing.isPublic) {
+    // Handle sharing: public trips must always have a token; private trips must not.
+    if (updates.isPublic === true) {
       data.isPublic = true;
-      data.shareToken = generateShareToken();
+      if (!existing.shareToken) data.shareToken = generateShareToken();
     } else if (updates.isPublic === false && existing.isPublic) {
       data.isPublic = false;
       data.shareToken = null;
