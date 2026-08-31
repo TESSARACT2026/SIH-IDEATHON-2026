@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { ZodError } from 'zod';
 import type { ApiResponse } from '../types/index.js';
 
 /**
@@ -11,6 +12,17 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ): void {
+  if (err instanceof ZodError) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request',
+        details: err.flatten().fieldErrors,
+      },
+    });
+    return;
+  }
+
   const statusCode = err.statusCode ?? 500;
   const code = err.code ?? 'INTERNAL_ERROR';
 

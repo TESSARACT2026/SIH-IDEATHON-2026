@@ -322,6 +322,11 @@ async function testPlanner() {
     return r;
   });
 
+  await test('POST /planner/generate invalid payload -> 400', async () => {
+    const r = await req('POST', `${API}/planner/generate`, { destinationId: destId, days: 0 });
+    return { ...r, ok: r.status === 400 };
+  });
+
   await test('POST /planner/generate saveTrip without token -> 401', async () => {
     const savedToken = authToken;
     authToken = '';
@@ -339,6 +344,11 @@ async function testLiveData() {
   // Bhubaneswar coordinates
   await test('GET /live/weather?lat=20.2961&lon=85.8245', async () => {
     return req('GET', `${API}/live/weather?lat=20.2961&lon=85.8245`);
+  });
+
+  await test('GET /live/weather invalid latitude -> 400', async () => {
+    const r = await req('GET', `${API}/live/weather?lat=200&lon=85.8245`);
+    return { ...r, ok: r.status === 400 };
   });
 
   // Note: the route endpoint is /live/route not /live/transport
