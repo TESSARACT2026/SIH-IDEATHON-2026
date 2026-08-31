@@ -7,6 +7,9 @@
  * Run auth checks too: API_TEST_BEARER_TOKEN=<supabase-access-token> npx tsx scripts/api-test.ts
  */
 
+import '../src/shared/config/index.js';
+import { prisma } from '../src/shared/db/index.js';
+
 const BASE = 'http://localhost:3001';
 const API  = `${BASE}/api/v1`;
 
@@ -19,12 +22,14 @@ interface Result {
   durationMs: number;
 }
 
-const results: Result[] = [];
+const results = [] as Result[];
 let authToken  = process.env.API_TEST_BEARER_TOKEN ?? '';
 let tripId     = '';
 let shareToken = '';
 let attrId     = '';
 let destId     = 'bhubaneswar-odisha'; // legacy frontend slug, resolved by backend
+let crowdRecordId = '';
+let feedbackId = '';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 async function test(
@@ -55,6 +60,18 @@ async function test(
 
 function addWarning(name: string, detail: string): void {
   results.push({ name, status: 'WARN', durationMs: 0, detail });
+}
+
+async function cleanupCreatedRecords(): Promise<void> {
+  try {
+    if (tripId) await prisma.trip.deleteMany({ where: { id: tripId } });
+    if (feedbackId) await prisma.feedback.deleteMany({ where: { id: feedbackId } });
+    if (crowdRecordId) await prisma.crowdCapacityRecord.deleteMany({ where: { id: crowdRecordId } });
+  } catch (err) {
+    addWarning('Authenticated test cleanup', (err as Error).message);
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 async function req(
@@ -566,6 +583,7 @@ async function testCrowdAuthenticated() {
     });
     const b = r.body as Record<string, unknown>;
     const data = b.data as Record<string, unknown>;
+    if (r.ok) crowdRecordId = data.id as string;
     if (r.ok && data.verificationStatus !== 'COMMUNITY') return { ...r, ok: false };
     return r;
   });
@@ -651,6 +669,15 @@ async function testTrips() {
     return { ok: r.ok && r.headers.get('content-type')?.includes('application/pdf') === true && startsWithPdf, status: r.status, body: {} };
   });
 
+  await test('GET /trips/share/:token', async () => {
+    if (!shareToken) return { ok: false, status: 0, body: {} };
+    const saved = authToken;
+    authToken = '';
+    const r = await req('GET', `${API}/trips/share/${shareToken}`);
+    authToken = saved;
+    return r;
+  });
+
   await test('PATCH /trips/:id invalid dates -> 400', async () => {
     if (!tripId) return { ok: false, status: 0, body: {} };
     const r = await req('PATCH', `${API}/trips/${tripId}`, {
@@ -658,6 +685,13 @@ async function testTrips() {
       endDate: new Date(Date.now() + 19 * 86400000).toISOString(),
     });
     return { ...r, ok: r.status === 400 };
+  });
+
+  await test('DELETE /trips/:id', async () => {
+    if (!tripId) return { ok: false, status: 0, body: {} };
+    const r = await req('DELETE', `${API}/trips/${tripId}`);
+    if (r.ok) tripId = '';
+    return r;
   });
 }
 
@@ -688,12 +722,16 @@ async function testFavorites() {
 
 async function testFeedback() {
   await test('POST /feedback', async () => {
-    return req('POST', `${API}/feedback`, {
+    const r = await req('POST', `${API}/feedback`, {
       entityType: 'ATTRACTION',     // uppercase enum as schema requires
       entityId: attrId || 'lingaraj-temple',
       feedbackType: 'INACCURATE',
       comment: 'The temple now opens at 8am, not 6am.',
     });
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    if (r.ok) feedbackId = data.id as string;
+    return r;
   });
 }
 
@@ -722,6 +760,23 @@ async function testFeedbackAdminAccess() {
     const r = await req('POST', `${API}/feedback/admin/facts/${uuid}/reverify`, { verificationStatus: 'VERIFIED' });
     authToken = saved;
     return { ...r, ok: r.status === 401 };
+  });
+
+  if (!authToken) return;
+
+  await test('GET /feedback/admin/review-queue with token', async () => {
+    const r = await req('GET', `${API}/feedback/admin/review-queue`);
+    return { ...r, ok: r.status === 200 || r.status === 403 };
+  });
+
+  await test('PATCH /feedback/admin/:id/review with token invalid UUID', async () => {
+    const r = await req('PATCH', `${API}/feedback/admin/not-a-uuid/review`, { status: 'REVIEWED' });
+    return { ...r, ok: r.status === 400 || r.status === 403 };
+  });
+
+  await test('POST /feedback/admin/facts/:factId/reverify with token invalid UUID', async () => {
+    const r = await req('POST', `${API}/feedback/admin/facts/not-a-uuid/reverify`, { verificationStatus: 'VERIFIED' });
+    return { ...r, ok: r.status === 400 || r.status === 403 };
   });
 }
 
@@ -767,6 +822,7 @@ async function main() {
     await testCrowdAuthenticated();
     await testFeedback();
     await testAnalytics();
+    await cleanupCreatedRecords();
   } else {
     addWarning('Authenticated route checks', 'Skipped; set API_TEST_BEARER_TOKEN to a Supabase access token.');
   }

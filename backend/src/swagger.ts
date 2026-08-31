@@ -1,4 +1,4 @@
-const bearerSecurity = [{ bearerAuth: [] }] as const;
+const bearerSecurity = [{ bearerAuth: [] }, { cookieAuth: [] }] as const;
 
 export const openApiDocument = {
   openapi: '3.1.0',
@@ -36,6 +36,12 @@ export const openApiDocument = {
         scheme: 'bearer',
         bearerFormat: 'JWT',
         description: 'Supabase access token.',
+      },
+      cookieAuth: {
+        type: 'apiKey',
+        in: 'cookie',
+        name: 'access_token',
+        description: 'Supabase access token stored in an access_token cookie.',
       },
     },
     schemas: {

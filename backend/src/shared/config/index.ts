@@ -19,7 +19,7 @@ const envSchema = z.object({
 
   // LLM
   GEMINI_API_KEY: z.string().min(1).default('mock-gemini-api-key-dev'),
-  GEMINI_MODEL: z.string().min(1).default('gemini-3.5-flash-lite'),
+  GEMINI_MODEL: z.string().min(1).default('gemini-3.6-flash'),
 
   // Routing
   ROUTING_API_KEY: z.string().min(1).default('mock-routing-api-key-dev'),

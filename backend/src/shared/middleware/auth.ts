@@ -27,9 +27,10 @@ import { prisma } from '../db/index.js';
  */
 async function extractToken(req: Request): Promise<AuthPayload | null> {
   const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) return null;
+  const cookieToken = typeof req.cookies?.access_token === 'string' ? req.cookies.access_token : null;
+  const token = header?.startsWith('Bearer ') ? header.slice(7) : cookieToken;
+  if (!token) return null;
 
-  const token = header.slice(7);
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);
     if (error || !user) return null;
