@@ -721,11 +721,40 @@ export const swaggerHtml = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Travel Assistant API Docs</title>
+    <title>MargDarshak Backend API Docs</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
+    <style>
+      body { margin: 0; background: #f6f8fb; }
+      .api-header {
+        background: #0f172a;
+        color: #f8fafc;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        padding: 18px 32px;
+        border-bottom: 4px solid #14b8a6;
+      }
+      .api-header h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; }
+      .api-header p { margin: 0; color: #cbd5e1; font-size: 14px; }
+      .swagger-ui .topbar { display: none; }
+      .swagger-ui .info { margin: 28px 0; }
+      .swagger-ui .scheme-container {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        box-shadow: none;
+      }
+      .swagger-ui .opblock { border-radius: 6px; box-shadow: none; }
+      .swagger-ui .btn.authorize {
+        border-color: #0f766e;
+        color: #0f766e;
+      }
+      .swagger-ui .btn.authorize svg { fill: #0f766e; }
+    </style>
   </head>
   <body>
+    <header class="api-header">
+      <h1>MargDarshak Backend API</h1>
+      <p>OpenAPI documentation for knowledge, planner, trips, trust, guide, budget, PDF, and audio endpoints.</p>
+    </header>
     <div id="swagger-ui"></div>
     <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
     <script src="/api/docs/swagger-init.js"></script>
@@ -737,6 +766,14 @@ export const swaggerInitScript = `window.addEventListener('load', () => {
     url: '/api/openapi.json',
     dom_id: '#swagger-ui',
     deepLinking: true,
+    displayRequestDuration: true,
+    docExpansion: 'none',
+    filter: true,
+    persistAuthorization: true,
+    tryItOutEnabled: true,
+    tagsSorter: 'alpha',
+    operationsSorter: 'alpha',
+    defaultModelsExpandDepth: 1,
     presets: [SwaggerUIBundle.presets.apis],
     layout: 'BaseLayout'
   });
