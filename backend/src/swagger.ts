@@ -218,8 +218,11 @@ export const openApiDocument = {
       FavoriteRequest: {
         type: 'object',
         additionalProperties: false,
-        required: ['attractionId'],
-        properties: { attractionId: { type: 'string', minLength: 1, maxLength: 100, description: 'UUID or legacy frontend slug.' } },
+        oneOf: [{ required: ['attractionId'] }, { required: ['destinationId'] }],
+        properties: {
+          attractionId: { type: 'string', minLength: 1, maxLength: 100, description: 'UUID or legacy frontend slug.' },
+          destinationId: { type: 'string', minLength: 1, maxLength: 100, description: 'UUID or legacy frontend slug.' },
+        },
       },
       TripCreateRequest: {
         type: 'object',
@@ -501,13 +504,22 @@ export const openApiDocument = {
       },
     },
     '/api/v1/favorites': {
-      get: { security: bearerSecurity, tags: ['Favorites'], summary: 'List saved attractions', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
+      get: { security: bearerSecurity, tags: ['Favorites'], summary: 'List saved destinations and attractions', responses: { '200': { $ref: '#/components/responses/Ok' }, '401': { $ref: '#/components/responses/Unauthorized' } } },
       post: {
         security: bearerSecurity,
         tags: ['Favorites'],
-        summary: 'Add attraction favorite',
+        summary: 'Add destination or attraction favorite',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/FavoriteRequest' } } } },
         responses: { '201': { $ref: '#/components/responses/Created' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
+      },
+    },
+    '/api/v1/favorites/destinations/{destinationId}': {
+      delete: {
+        security: bearerSecurity,
+        tags: ['Favorites'],
+        summary: 'Remove destination favorite',
+        parameters: [{ name: 'destinationId', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' } },
       },
     },
     '/api/v1/favorites/{attractionId}': {
