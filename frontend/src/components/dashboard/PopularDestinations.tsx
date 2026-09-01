@@ -156,12 +156,6 @@ const backendVisuals: Array<Pick<Destination, 'name' | 'rating' | 'reviews' | 'i
     image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Konarka_Temple.jpg/960px-Konarka_Temple.jpg',
   },
   {
-    name: 'Jaipur',
-    rating: 4.7,
-    reviews: 'Backend',
-    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/East_facade_Hawa_Mahal_Jaipur_from_ground_level_%28July_2022%29_-_img_01.jpg/960px-East_facade_Hawa_Mahal_Jaipur_from_ground_level_%28July_2022%29_-_img_01.jpg',
-  },
-  {
     name: 'Varanasi',
     rating: 4.9,
     reviews: 'Backend',
