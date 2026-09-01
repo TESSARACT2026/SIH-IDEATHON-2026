@@ -101,7 +101,7 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/scoring/trip-health/:id` | Yes | Calculate trip risk/health score for a saved trip. |
 | POST | `/api/v1/scoring/tourism-impact` | No | Compare popular and responsible route impact metrics. |
 | GET | `/api/v1/scoring/trip-trust/:id` | Yes | Aggregate itinerary fact trust into a trip-level score. |
-| POST | `/api/v1/groups` | Yes | Create an in-memory group planning session. |
+| POST | `/api/v1/groups` | Yes | Create a persisted group planning session. |
 | GET | `/api/v1/groups/:code` | No | Get group planning session status. |
 | POST | `/api/v1/groups/:code/join` | No | Submit participant preferences for a group plan. |
 | POST | `/api/v1/groups/:code/generate` | No | Generate an itinerary from blended group preferences. |
@@ -305,6 +305,7 @@ route returns `503 AUDIO_UNAVAILABLE`.
   "entityId": "00000000-0000-4000-8000-000000003001",
   "entityType": "FACT",
   "feedbackType": "OUTDATED",
+  "reportType": "HOURS_INCORRECT",
   "comment": "The opening time has changed."
 }
 ```
@@ -313,9 +314,10 @@ Allowed values:
 
 - `entityType`: `ATTRACTION`, `FACT`, `CROWD_RECORD`
 - `feedbackType`: `INACCURATE`, `OUTDATED`, `OTHER`
+- `reportType`: optional structured report category: `CLOSED`, `PRICE_CHANGED`, `ACCESSIBILITY_INCORRECT`, `HOURS_INCORRECT`, `ROAD_BLOCKED`, `OVERCROWDED`, `FACILITY_UNAVAILABLE`, `OTHER`
 
-Feedback is stored with `PENDING` status for manual review. Submitting feedback
-does not automatically downgrade or rewrite trusted facts.
+Feedback is stored with `PENDING` status and its `reportType` for manual review.
+Submitting feedback does not automatically downgrade or rewrite trusted facts.
 
 `GET /api/v1/feedback/admin/review-queue?status=PENDING&limit=20`
 
@@ -582,7 +584,7 @@ conflicts into a trip-level trust score.
 }
 ```
 
-Creates a group planning session and returns a join code.
+Creates a persisted group planning session and returns a join code.
 
 `POST /api/v1/groups/:code/join`
 
@@ -608,8 +610,7 @@ Returns group status and submitted participant summaries.
 
 `POST /api/v1/groups/:code/generate`
 
-Generates an itinerary from blended group preferences. Current limitation:
-group plans are stored in memory until Phase 4 persistence work.
+Generates an itinerary from persisted participant preferences.
 
 ### Search
 
@@ -642,7 +643,5 @@ group plans are stored in memory until Phase 4 persistence work.
 ## Current Gaps
 
 - Backend auth endpoints documented previously do not exist; use Supabase auth.
-- Feedback `reportType` is accepted by validation but not stored in the current schema.
-- Group planning is currently in memory.
 - Offline survival mode is only PDF export, not an offline-pack API.
 - Voice support is NLU/TTS only, not a context-aware command backend.

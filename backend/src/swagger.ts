@@ -203,6 +203,7 @@ export const openApiDocument = {
           entityId: { type: 'string', minLength: 1, maxLength: 100, description: 'UUID; attraction feedback also accepts legacy frontend attraction slugs.' },
           entityType: { type: 'string', enum: ['ATTRACTION', 'FACT', 'CROWD_RECORD'] },
           feedbackType: { type: 'string', enum: ['INACCURATE', 'OUTDATED', 'OTHER'] },
+          reportType: { type: 'string', enum: ['CLOSED', 'PRICE_CHANGED', 'ACCESSIBILITY_INCORRECT', 'HOURS_INCORRECT', 'ROAD_BLOCKED', 'OVERCROWDED', 'FACILITY_UNAVAILABLE', 'OTHER'] },
           comment: { type: 'string', maxLength: 500 },
         },
       },
