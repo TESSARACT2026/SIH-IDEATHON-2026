@@ -1,7 +1,7 @@
 import { cache } from './cache.js';
 import { AppError } from '../../shared/middleware/errorHandler.js';
 
-const WEATHER_CACHE_TTL = 3600; // 1 hour
+const WEATHER_CACHE_TTL = 20 * 60; // 20 minutes
 
 export interface WeatherData {
   temperature_celsius: number;

@@ -173,7 +173,7 @@ the original fallback data.
 Use this endpoint with browser geolocation coordinates for client-location
 real-time weather. The response includes current temperature, condition,
 humidity, wind speed, source, and timestamp when the upstream provider returns
-them.
+them. Backend weather responses are cached for 10 minutes.
 
 `GET /api/v1/live/forecast?lat=20.2961&lon=85.8245&startDate=2026-09-01&endDate=2026-09-04`
 

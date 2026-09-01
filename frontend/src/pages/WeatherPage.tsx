@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
-import { Cloud, MapPin, Calendar, Search, Loader2, Thermometer, CloudRain, Sun, CloudLightning, CloudSnow, Navigation } from 'lucide-react';
+import { Cloud, MapPin, Calendar, Search, Loader2, Thermometer, CloudRain, Sun, CloudLightning, CloudSnow, Navigation, RefreshCw } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { knowledgeApi } from '../api/services/knowledgeApi';
 import { liveApi } from '../api/services/liveApi';
@@ -20,6 +20,8 @@ interface CurrentWeatherResult {
   lon: number;
 }
 
+const WEATHER_REFRESH_MS = 20 * 60 * 1000;
+
 export const WeatherPage: React.FC = () => {
   const [destinationId, setDestinationId] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -28,11 +30,19 @@ export const WeatherPage: React.FC = () => {
   const [locationLoading, setLocationLoading] = useState(false);
   const [error, setError] = useState('');
   const [results, setResults] = useState<{ location: string; forecast: WeatherDay[] } | null>(null);
-  const [currentWeather, setCurrentWeather] = useState<CurrentWeatherResult | null>(null);
+  const [currentCoords, setCurrentCoords] = useState<{ lat: number; lon: number } | null>(null);
 
   const { data: destinations = [] } = useQuery({
     queryKey: ['destinations'],
     queryFn: knowledgeApi.getDestinations,
+  });
+
+  const { data: clientWeather, isFetching: isFetchingClientWeather, refetch: refetchClientWeather } = useQuery({
+    queryKey: ['client-weather', currentCoords?.lat, currentCoords?.lon],
+    queryFn: () => liveApi.getLiveWeather(currentCoords!.lat, currentCoords!.lon),
+    enabled: !!currentCoords,
+    staleTime: WEATHER_REFRESH_MS,
+    refetchInterval: WEATHER_REFRESH_MS,
   });
 
   React.useEffect(() => {
@@ -82,13 +92,7 @@ export const WeatherPage: React.FC = () => {
     try {
       const position = await getCurrentPosition();
       const { latitude, longitude } = position.coords;
-      const weather = await liveApi.getLiveWeather(latitude, longitude);
-      setCurrentWeather({
-        location: 'Your current location',
-        weather,
-        lat: latitude,
-        lon: longitude,
-      });
+      setCurrentCoords({ lat: latitude, lon: longitude });
     } catch (err: any) {
       setError(err.message || 'Could not fetch weather for your current location.');
     } finally {
@@ -96,8 +100,14 @@ export const WeatherPage: React.FC = () => {
     }
   };
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const currentWeather: CurrentWeatherResult | null = currentCoords && clientWeather ? {
+    location: 'Your current location',
+    weather: clientWeather,
+    lat: currentCoords.lat,
+    lon: currentCoords.lon,
+  } : null;
+
+  const loadForecast = async (clearResults = false) => {
     if (!destinationId || !startDate || !endDate) {
       setError('Please fill in all fields');
       return;
@@ -118,7 +128,7 @@ export const WeatherPage: React.FC = () => {
 
     setLoading(true);
     setError('');
-    setResults(null);
+    if (clearResults) setResults(null);
 
     try {
       const destination = destinations.find((item) => item.id === destinationId);
@@ -145,6 +155,21 @@ export const WeatherPage: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await loadForecast(true);
+  };
+
+  React.useEffect(() => {
+    if (!results) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadForecast();
+    }, WEATHER_REFRESH_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [destinationId, startDate, endDate, results]);
 
   return (
     <MainLayout>
@@ -214,10 +239,10 @@ export const WeatherPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleUseCurrentLocation}
-                  disabled={locationLoading}
+                  disabled={locationLoading || isFetchingClientWeather}
                   className="px-6 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  {locationLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Navigation className="w-5 h-5" />}
+                  {locationLoading || isFetchingClientWeather ? <Loader2 className="w-5 h-5 animate-spin" /> : <Navigation className="w-5 h-5" />}
                   Use My Location
                 </button>
 
@@ -252,9 +277,20 @@ export const WeatherPage: React.FC = () => {
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {currentWeather.lat.toFixed(3)}, {currentWeather.lon.toFixed(3)}
                   {currentWeather.weather.source ? ` • ${currentWeather.weather.source}` : ''}
+                  {currentWeather.weather.verifiedAt ? ` • Updated ${new Date(currentWeather.weather.verifiedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
                 </p>
               </div>
-              <div className="flex items-center gap-5">
+              <div className="flex items-center gap-3 sm:gap-5">
+                <button
+                  type="button"
+                  onClick={() => refetchClientWeather()}
+                  disabled={isFetchingClientWeather}
+                  title="Refresh weather"
+                  aria-label="Refresh current location weather"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isFetchingClientWeather ? 'animate-spin' : ''}`} />
+                </button>
                 <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-full">
                   {getWeatherInfo(getCodeFromCondition(currentWeather.weather.condition)).icon}
                 </div>
@@ -276,9 +312,21 @@ export const WeatherPage: React.FC = () => {
 
         {results && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-              Forecast for {results.location}
-            </h2>
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+                Forecast for {results.location}
+              </h2>
+              <button
+                type="button"
+                onClick={() => loadForecast()}
+                disabled={loading}
+                title="Refresh forecast"
+                aria-label="Refresh forecast"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {results.forecast.map((day, i) => {
                 const info = getWeatherInfo(day.weatherCode);
