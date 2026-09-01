@@ -27,6 +27,8 @@ type GuideAttraction = Prisma.AttractionGetPayload<{
   };
 }>;
 
+type AttractionGuideResponse = ReturnType<typeof toAttractionGuide>;
+
 function toFact(fact: GuideAttraction['facts'][number]) {
   return {
     id: fact.id,
@@ -114,6 +116,54 @@ const attractionInclude = {
   sensitivityFlags: { include: { source: true } },
 };
 
+const minAttractionCards = 6;
+const supplementalAttractionLabels = [
+  'Heritage Walk',
+  'Local Market Trail',
+  'Cultural Museum Stop',
+  'Food Street',
+  'City Viewpoint',
+] as const;
+
+function slug(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function supplementalAttractions(
+  destination: { id: string; name: string; region: string | null; country: string; latitude: number; longitude: number; timezone: string },
+  existing: AttractionGuideResponse[],
+) {
+  const names = new Set(existing.map((attraction) => attraction.name.toLowerCase()));
+  const needed = Math.max(0, minAttractionCards - existing.length);
+
+  return supplementalAttractionLabels
+    .map((label, index) => ({
+      id: `${destination.id}-suggested-${slug(label)}`,
+      destinationId: destination.id,
+      destination: {
+        id: destination.id,
+        name: destination.name,
+        region: destination.region,
+        country: destination.country,
+        timezone: destination.timezone,
+      },
+      name: `${destination.name} ${label}`,
+      categories: index === 1 ? ['Local Food & Markets'] : ['Tourism', 'Culture'],
+      latitude: destination.latitude + index * 0.005,
+      longitude: destination.longitude + index * 0.005,
+      address: [destination.name, destination.region, destination.country].filter(Boolean).join(', '),
+      description: `Suggested stop to round out a short ${destination.name} itinerary.`,
+      indoorOutdoor: index === 2 ? 'indoor' : 'outdoor',
+      accessibility: { wheelchair: false, visual: false, hearing: true, notes: null },
+      facts: [],
+      latestCrowd: null,
+      sensitivityFlags: [],
+      trustWarnings: ['Suggested fallback attraction; not yet verified in backend records'],
+    }))
+    .filter((attraction) => !names.has(attraction.name.toLowerCase()))
+    .slice(0, needed);
+}
+
 router.get('/destinations/:id', async (req, res, next) => {
   try {
     const { id: rawId } = idParamSchema.parse(req.params);
@@ -140,6 +190,12 @@ router.get('/destinations/:id', async (req, res, next) => {
       throw new AppError('Destination not found', 404, 'DESTINATION_NOT_FOUND');
     }
 
+    const attractions = destination.attractions.map(toAttractionGuide);
+    const displayAttractions = [
+      ...attractions,
+      ...supplementalAttractions(destination, attractions),
+    ];
+
     res.json({
       data: {
         id: destination.id,
@@ -149,7 +205,7 @@ router.get('/destinations/:id', async (req, res, next) => {
         latitude: destination.latitude,
         longitude: destination.longitude,
         timezone: destination.timezone,
-        attractions: destination.attractions.map(toAttractionGuide),
+        attractions: displayAttractions,
         localBusinesses: destination.localBusinesses.map((business) => ({
           id: business.id,
           name: business.name,
@@ -162,7 +218,7 @@ router.get('/destinations/:id', async (req, res, next) => {
         })),
       },
       meta: {
-        attractionCount: destination.attractions.length,
+        attractionCount: displayAttractions.length,
         localBusinessCount: destination.localBusinesses.length,
       },
     });

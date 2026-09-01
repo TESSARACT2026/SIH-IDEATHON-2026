@@ -14,6 +14,41 @@ const safetyCache = new TTLMemoryCache<any>(60 * 60 * 1000); // 1 hour
 
 // ─── Currency Exchange (Currency-api) ───────────────────────────────────────
 
+const supportedCurrencyCodes = [
+  'usd',
+  'eur',
+  'gbp',
+  'jpy',
+  'aud',
+  'cad',
+  'sgd',
+  'aed',
+  'sar',
+  'thb',
+  'myr',
+  'idr',
+  'npr',
+  'lkr',
+  'bdt',
+  'cny',
+  'hkd',
+  'chf',
+  'nzd',
+  'zar',
+] as const;
+
+function normalizeExchangeRates(data: any) {
+  const rates = data?.inr && typeof data.inr === 'object' ? data.inr : {};
+  return {
+    date: data?.date,
+    inr: Object.fromEntries(
+      supportedCurrencyCodes
+        .map((code) => [code, rates[code]])
+        .filter(([, rate]) => typeof rate === 'number' && Number.isFinite(rate)),
+    ),
+  };
+}
+
 router.get('/exchange-rates', async (_req, res, next) => {
   try {
     const cached = exchangeRateCache.get('inr-rates');
@@ -28,7 +63,7 @@ router.get('/exchange-rates', async (_req, res, next) => {
       throw new AppError('Failed to fetch exchange rates', 502, 'PUBLIC_API_ERROR');
     }
 
-    const data = await response.json();
+    const data = normalizeExchangeRates(await response.json());
     exchangeRateCache.set('inr-rates', data);
 
     res.json({ data });

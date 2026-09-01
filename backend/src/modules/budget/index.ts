@@ -40,6 +40,72 @@ type BudgetAttraction = Prisma.AttractionGetPayload<{
   };
 }>;
 
+const approximateVisitCostByDestination: Record<string, number> = {
+  agartala: 4200,
+  agra: 5200,
+  ahmedabad: 5000,
+  aizwal: 5600,
+  aizawl: 5600,
+  amritsar: 4800,
+  bengaluru: 6500,
+  bhopal: 4600,
+  'bodh gaya': 4300,
+  bhubaneswar: 2200,
+  chandigarh: 5000,
+  chennai: 5600,
+  daman: 5200,
+  darjeeling: 6800,
+  dehradun: 5400,
+  gangtok: 7200,
+  goa: 8500,
+  gurugram: 6200,
+  guwahati: 5200,
+  hyderabad: 5600,
+  imphal: 5600,
+  jaipur: 5800,
+  kavaratti: 12000,
+  kerala: 7800,
+  kohima: 5800,
+  kolkata: 5200,
+  konark: 2800,
+  leh: 9500,
+  manali: 7800,
+  mumbai: 7000,
+  munnar: 7200,
+  mysore: 5000,
+  'new delhi': 6200,
+  pondicherry: 5200,
+  'port blair': 9000,
+  puri: 3200,
+  raipur: 4300,
+  ranchi: 4200,
+  shillong: 6200,
+  srinagar: 7600,
+  tawang: 8500,
+  varanasi: 4600,
+  visakhapatnam: 4800,
+};
+
+function approximateVisitCost(
+  destinationName: string,
+  travellerType: 'INDIAN' | 'FOREIGN' | 'CHILD',
+) {
+  const base = approximateVisitCostByDestination[destinationName.trim().toLowerCase()] ?? 4500;
+  if (travellerType === 'FOREIGN') return Math.round(base * 1.6);
+  if (travellerType === 'CHILD') return Math.round(base * 0.65);
+  return base;
+}
+
+function approximateAttractionAmount(
+  destinationName: string,
+  travellerType: 'INDIAN' | 'FOREIGN' | 'CHILD',
+  attractionCount: number,
+) {
+  if (!destinationName) return 80;
+  const amount = approximateVisitCost(destinationName, travellerType) / Math.max(1, attractionCount);
+  return Math.max(50, Math.round(amount / 50) * 50);
+}
+
 function numberFrom(value: Prisma.JsonValue, key: string): number | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const raw = (value as Record<string, unknown>)[key];
@@ -67,7 +133,13 @@ function sourceFor(fact: PriceFact) {
   };
 }
 
-function buildBudget(attractions: BudgetAttraction[], travellerType: 'INDIAN' | 'FOREIGN' | 'CHILD', travellers: number) {
+function buildBudget(
+  attractions: BudgetAttraction[],
+  travellerType: 'INDIAN' | 'FOREIGN' | 'CHILD',
+  travellers: number,
+  destinationName = '',
+) {
+  const approximateAmount = approximateAttractionAmount(destinationName, travellerType, attractions.length);
   const lineItems = attractions.map((attraction) => {
     const priceFacts = attraction.facts.filter((fact) => fact.factKey === 'ticket_price');
     const selectedFact =
@@ -78,35 +150,33 @@ function buildBudget(attractions: BudgetAttraction[], travellerType: 'INDIAN' | 
     const amount = selectedFact && trustedStatuses.has(selectedFact.verificationStatus)
       ? priceFor(selectedFact, travellerType)
       : null;
+    const estimatedAmount = amount ?? approximateAmount;
 
     return {
       attractionId: attraction.id,
       attractionName: attraction.name,
-      amountPerTraveller: amount,
+      amountPerTraveller: estimatedAmount,
       travellers,
-      totalAmount: amount === null ? null : amount * travellers,
-      currency: selectedFact ? stringFrom(selectedFact.factValue, 'currency') ?? 'INR' : null,
-      verificationStatus: selectedFact?.verificationStatus ?? 'UNVERIFIED',
+      totalAmount: estimatedAmount * travellers,
+      currency: amount === null ? 'INR' : stringFrom(selectedFact!.factValue, 'currency') ?? 'INR',
+      verificationStatus: amount === null ? 'INFERRED' : selectedFact?.verificationStatus ?? 'VERIFIED',
       source: selectedFact ? sourceFor(selectedFact) : null,
-      note:
-        !selectedFact
-          ? 'No ticket price fact found'
-          : !trustedStatuses.has(selectedFact.verificationStatus)
-            ? 'Ticket price is not verified; excluded from total'
-            : amount === null
-              ? 'Ticket price amount is not numeric; excluded from total'
-              : null,
+      note: amount === null ? 'Approximate ticket estimate; no verified price available' : null,
     };
   });
 
   const included = lineItems.filter((item) => item.totalAmount !== null);
   const unverified = lineItems.filter((item) => item.totalAmount === null);
+  const ticketTotal = included.reduce((sum, item) => sum + item.totalAmount!, 0);
+  const destinationEstimate = destinationName
+    ? approximateVisitCost(destinationName, travellerType) * travellers
+    : 0;
 
   return {
     currency: 'INR',
     travellerType,
     travellers,
-    totalAmount: included.reduce((sum, item) => sum + item.totalAmount!, 0),
+    totalAmount: Math.max(ticketTotal, destinationEstimate),
     includedCount: included.length,
     unverifiedCount: unverified.length,
     lineItems,
@@ -159,7 +229,7 @@ router.get('/destinations/:id', async (req, res, next) => {
     res.json({
       data: {
         destination,
-        ...buildBudget(attractions, query.travellerType, query.travellers),
+        ...buildBudget(attractions, query.travellerType, query.travellers, destination.name),
       },
     });
   } catch (err) {
