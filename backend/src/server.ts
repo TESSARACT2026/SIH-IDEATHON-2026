@@ -44,6 +44,11 @@ app.get('/api/docs', (_req, res) => {
   res.type('html').send(swaggerHtml);
 });
 
+// ─── UptimeRobot Lightweight Health Check ─────────────────────────────────────
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // ─── Production Health Check ────────────────────────────────────────────────
 app.get('/api/health', async (_req, res) => {
   const start = Date.now();
