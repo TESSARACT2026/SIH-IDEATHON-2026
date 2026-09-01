@@ -167,6 +167,29 @@ export const openApiDocument = {
           format: { type: 'string', enum: ['wav', 'pcm'], default: 'wav' },
         },
       },
+      NluVoiceCommandRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['utterance'],
+        properties: {
+          utterance: { type: 'string', minLength: 2, maxLength: 1000 },
+          locale: { type: 'string', pattern: '^[a-z]{2,3}(-[A-Z]{2})?$', default: 'en-IN' },
+          context: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              tripId: { type: 'string', format: 'uuid' },
+              destinationId: { type: 'string', minLength: 1, maxLength: 100 },
+              lat: { type: 'number', minimum: -90, maximum: 90 },
+              lon: { type: 'number', minimum: -180, maximum: 180 },
+              radiusKm: { type: 'number', minimum: 0.1, maximum: 50, default: 10 },
+              now: { type: 'string', format: 'date-time' },
+              remainingMinutes: { type: 'integer', minimum: 15, maximum: 1440 },
+              preferences: { $ref: '#/components/schemas/PlannerRequest/properties/preferences' },
+            },
+          },
+        },
+      },
       WhatIfDeltaRequest: {
         type: 'object',
         additionalProperties: false,
@@ -552,6 +575,15 @@ export const openApiDocument = {
         summary: 'Generate spoken narration audio',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NluSpeechRequest' } } } },
         responses: { '200': { $ref: '#/components/responses/Audio' }, '400': { $ref: '#/components/responses/BadRequest' }, '503': { $ref: '#/components/responses/ServiceUnavailable' } },
+      },
+    },
+    '/api/v1/nlu/voice-command': {
+      post: {
+        security: [{}, ...bearerSecurity],
+        tags: ['NLU'],
+        summary: 'Resolve a context-aware travel voice command',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NluVoiceCommandRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
       },
     },
     '/api/v1/nlu/extract-delta': {

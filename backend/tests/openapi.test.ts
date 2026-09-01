@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { openApiDocument } from '../src/swagger.js';
 
 const requiredPaths = [
+  '/api/v1/nlu/voice-command',
   '/api/v1/nlu/extract-delta',
   '/api/v1/trips/{id}/itinerary/replan',
   '/api/v1/trips/{id}/offline-pack',

@@ -69,6 +69,7 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | POST | `/api/v1/nlu/extract-delta` | No | Extract a structured what-if replan delta from free text. |
 | POST | `/api/v1/nlu/narrate` | No | Generate itinerary narration with fact-marker validation. |
 | POST | `/api/v1/nlu/speech` | No | Generate spoken narration audio with Gemini TTS. |
+| POST | `/api/v1/nlu/voice-command` | Optional | Resolve a context-aware travel voice command. |
 | POST | `/api/v1/feedback` | Yes | Validate and queue feedback response for review. |
 | GET | `/api/v1/feedback/admin/review-queue` | Admin | List feedback awaiting review. |
 | PATCH | `/api/v1/feedback/admin/:id/review` | Admin | Resolve feedback and optionally update a fact's verification status. |
@@ -296,6 +297,26 @@ Returns a structured what-if delta accepted by
 
 Returns binary audio (`audio/wav` by default). If Gemini TTS is unavailable, the
 route returns `503 AUDIO_UNAVAILABLE`.
+
+`POST /api/v1/nlu/voice-command`
+
+```json
+{
+  "utterance": "MargDarshak, mujhe abhi nearby kuch peaceful jagah chahiye.",
+  "locale": "hi-IN",
+  "context": {
+    "tripId": "00000000-0000-4000-8000-000000002001",
+    "lat": 20.2961,
+    "lon": 85.8245,
+    "remainingMinutes": 120
+  }
+}
+```
+
+Returns a deterministic intent, `spokenText`, context used, and either results
+or a next API action. Supported intents include nearby recommendations,
+itinerary readout, emergency help, offline-pack download, and what-if replans.
+Trip-specific voice commands require bearer auth and enforce trip ownership.
 
 ### Feedback
 
@@ -651,4 +672,3 @@ Generates an itinerary from persisted participant preferences.
 ## Current Gaps
 
 - Backend auth endpoints documented previously do not exist; use Supabase auth.
-- Voice support is NLU/TTS only, not a context-aware command backend.
