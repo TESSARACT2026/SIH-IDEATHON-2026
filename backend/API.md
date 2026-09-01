@@ -231,6 +231,8 @@ Notes:
 - `saveTrip` defaults to `false`. When `true`, the request must include a valid
   bearer token and the response includes `savedTrip.tripId` and
   `savedTrip.itineraryId`.
+- Saved generated trips persist the normalized planner input so later replans
+  keep the original preferences.
 
 ### NLU
 
@@ -408,10 +410,14 @@ Adding a duplicate favorite is safe; the backend uses an upsert.
   "itinerarySnapshot": {
     "destinationId": "00000000-0000-4000-8000-000000001001",
     "days": 3,
+    "plannerInput": {},
     "itineraryItems": []
   }
 }
 ```
+
+If `plannerInput` is present either beside `itinerarySnapshot` or inside it,
+the backend stores it for later replans.
 
 `GET /api/v1/trips/:id/export`
 
@@ -443,8 +449,9 @@ Supported delta types:
 - `crowd_increase`: accepts `strictFilter`.
 - `budget_change`: accepts `maxBudgetPerPerson`.
 
-Current limitation: replanning reconstructs preferences from defaults until
-Phase 1 persists the original planner input.
+Replanning uses the persisted planner input from generated trips. Old/manual
+trips without planner memory fall back to moderate pace, mixed transport, and
+no accessibility/interests constraints.
 
 Trip `:id` params must be UUIDs. `destinationId` accepts UUIDs and legacy
 frontend destination slugs.
@@ -625,7 +632,6 @@ group plans are stored in memory until Phase 4 persistence work.
 ## Current Gaps
 
 - Backend auth endpoints documented previously do not exist; use Supabase auth.
-- What-if replanning does not persist/reuse original planner input yet.
 - Feedback `reportType` is accepted by validation but not stored in the current schema.
 - Group planning is currently in memory.
 - Offline survival mode is only PDF export, not an offline-pack API.

@@ -30,6 +30,7 @@ const updateTripSchema = z.object({
 
 const saveSnapshotSchema = z.object({
   itinerarySnapshot: z.record(z.unknown()),
+  plannerInput: z.record(z.unknown()).optional(),
 }).strict();
 
 const uuidParamSchema = z.object({
@@ -517,16 +518,23 @@ router.patch('/:id', requireAuth, async (req, res, next) => {
 router.post('/:id/snapshot', requireAuth, async (req, res, next) => {
   try {
     const { id } = uuidParamSchema.parse(req.params);
-    const { itinerarySnapshot } = saveSnapshotSchema.parse(req.body);
+    const { itinerarySnapshot, plannerInput } = saveSnapshotSchema.parse(req.body);
     const userId = req.user!.userId;
 
     const existing = await prisma.trip.findUnique({ where: { id } });
     if (!existing || existing.userId !== userId) throw new AppError('Trip not found', 404, 'NOT_FOUND');
 
+    const snapshotPlannerInput = objectValue(itinerarySnapshot as Prisma.JsonValue)?.plannerInput;
+    const data: Prisma.TripUpdateInput = {
+      itinerarySnapshot: itinerarySnapshot as Prisma.InputJsonValue,
+    };
+    if (plannerInput || snapshotPlannerInput) {
+      data.plannerInput = (plannerInput ?? snapshotPlannerInput) as Prisma.InputJsonValue;
+    }
+
     const trip = await prisma.trip.update({
       where: { id },
-      // Prisma Json fields require explicit cast via Prisma.InputJsonValue
-      data: { itinerarySnapshot: itinerarySnapshot as import('@prisma/client').Prisma.InputJsonValue },
+      data,
     });
 
     res.json({

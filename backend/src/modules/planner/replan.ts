@@ -64,6 +64,28 @@ const tripIdParamSchema = z.object({
   id: z.string().uuid(),
 }).strict();
 
+const storedPlannerInputSchema = z.object({
+  destinationId: z.string().min(1).max(100),
+  startDate: z.string().datetime(),
+  endDate: z.string().datetime().optional(),
+  days: z.number().int().min(1).max(14),
+  title: z.string().min(1).max(200).optional(),
+  saveTrip: z.boolean().optional(),
+  preferences: z.object({
+    pace: z.enum(['RELAXED', 'MODERATE', 'PACKED']).default('MODERATE'),
+    accessibilityWheelchair: z.boolean().default(false),
+    accessibilityVision: z.boolean().default(false),
+    accessibilityHearing: z.boolean().default(false),
+    accessibilityCognitive: z.boolean().default(false),
+    interests: z.array(z.string().max(50)).max(20).default([]),
+    transportPreference: z.enum(['WALKING', 'PUBLIC_TRANSIT', 'CAB', 'OWN_VEHICLE', 'MIXED']).default('MIXED'),
+    groupType: z.enum(['SOLO', 'COUPLE', 'FAMILY', 'GROUP']).default('SOLO').optional(),
+    walkingToleranceMinutes: z.number().int().min(5).max(240).default(30).optional(),
+    indoorOutdoorPreference: z.enum(['indoor', 'outdoor', 'mixed']).default('mixed').optional(),
+    localBusinessPreference: z.boolean().default(false).optional(),
+  }).strict(),
+}).strict();
+
 // ─── Delta → Overrides mapping ──────────────────────────────────────────────
 
 function deltaToOverrides(delta: z.infer<typeof constraintDeltaSchema>): PlannerOverrides {
@@ -85,6 +107,23 @@ function deltaToOverrides(delta: z.infer<typeof constraintDeltaSchema>): Planner
   }
 }
 
+export function restorePlannerInputForReplan(
+  storedValue: unknown,
+  fallback: PlannerInput,
+): PlannerInput {
+  const parsed = storedPlannerInputSchema.safeParse(storedValue);
+  if (!parsed.success) return fallback;
+
+  return {
+    ...parsed.data,
+    destinationId: fallback.destinationId,
+    startDate: fallback.startDate,
+    endDate: fallback.endDate,
+    days: fallback.days,
+    saveTrip: false,
+  };
+}
+
 // ─── POST /api/v1/trips/:id/itinerary/replan ────────────────────────────────
 
 router.post('/:id/itinerary/replan', requireAuth, async (req, res, next) => {
@@ -97,6 +136,11 @@ router.post('/:id/itinerary/replan', requireAuth, async (req, res, next) => {
       where: { id },
       include: {
         destination: true,
+        itineraries: {
+          select: { plannerInput: true },
+          orderBy: { generatedAt: 'desc' },
+          take: 1,
+        },
       },
     });
 
@@ -109,9 +153,10 @@ router.post('/:id/itinerary/replan', requireAuth, async (req, res, next) => {
     const tripDays = snapshot?.days as number ??
       Math.max(1, Math.ceil((trip.endDate.getTime() - trip.startDate.getTime()) / (1000 * 60 * 60 * 24)));
 
-    const plannerInput: PlannerInput = {
+    const fallbackPlannerInput: PlannerInput = {
       destinationId: trip.destinationId,
       startDate: trip.startDate.toISOString(),
+      endDate: trip.endDate.toISOString(),
       days: tripDays,
       preferences: {
         pace: 'MODERATE',
@@ -123,6 +168,10 @@ router.post('/:id/itinerary/replan', requireAuth, async (req, res, next) => {
         transportPreference: 'MIXED',
       },
     };
+    const plannerInput = restorePlannerInputForReplan(
+      trip.plannerInput ?? trip.itineraries[0]?.plannerInput ?? null,
+      fallbackPlannerInput,
+    );
 
     // Compute overrides from the delta
     const overrides = deltaToOverrides(delta);
@@ -161,6 +210,7 @@ router.post('/:id/itinerary/replan', requireAuth, async (req, res, next) => {
     await prisma.trip.update({
       where: { id },
       data: {
+        plannerInput: plannerInput as unknown as Prisma.InputJsonValue,
         itinerarySnapshot: newPlan as unknown as Prisma.InputJsonValue,
       },
     });

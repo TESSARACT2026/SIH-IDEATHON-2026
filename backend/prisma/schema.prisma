@@ -324,6 +324,7 @@ model Trip {
   startDate         DateTime   @map("start_date")
   endDate           DateTime   @map("end_date")
   status            TripStatus @default(DRAFT)
+  plannerInput      Json?      @map("planner_input") // original request used for deterministic replanning
   itinerarySnapshot Json?      @map("itinerary_snapshot") // frozen snapshot of last generated itinerary
   isPublic          Boolean    @default(false) @map("is_public")
   shareToken        String?    @unique @map("share_token") // crypto-random, set when is_public=true
@@ -344,6 +345,7 @@ model Itinerary {
   tripId         String   @map("trip_id")
   generatedAt    DateTime @default(now()) @map("generated_at")
   plannerVersion String   @default("1.0.0") @map("planner_version")
+  plannerInput   Json?    @map("planner_input")
   rawPlan        Json?    @map("raw_plan")
   validated      Boolean  @default(false)
 

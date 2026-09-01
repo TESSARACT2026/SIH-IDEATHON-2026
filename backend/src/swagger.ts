@@ -321,7 +321,10 @@ export const openApiDocument = {
         type: 'object',
         additionalProperties: false,
         required: ['itinerarySnapshot'],
-        properties: { itinerarySnapshot: { type: 'object', additionalProperties: true } },
+        properties: {
+          itinerarySnapshot: { type: 'object', additionalProperties: true },
+          plannerInput: { type: 'object', additionalProperties: true },
+        },
       },
     },
     responses: {
