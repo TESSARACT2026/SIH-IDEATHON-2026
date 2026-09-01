@@ -162,9 +162,36 @@ function itineraryLinesFromSnapshot(snapshot: Prisma.JsonValue | null | undefine
     const attraction = textValue(item.attractionName) ?? textValue(item.name) ?? textValue(item.entityId) ?? 'Stop';
     const time = [textValue(item.startTime), textValue(item.endTime)].filter(Boolean).join(' - ');
     const note = textValue(item.explanationText) ?? textValue(item.description);
+    
+    // Survival Info extraction
+    const trust = objectValue(item.trustSummary as Prisma.JsonValue);
+    const facts = arrayValue(trust?.facts);
+    
+    let survivalInfo = '';
+    if (facts.length > 0) {
+      const parts = [];
+      const price = facts.find(f => f.fact_key === 'ticket_price');
+      if (price) {
+        const val = objectValue(price.fact_value as Prisma.JsonValue);
+        if (val && typeof val.amount === 'number') {
+          parts.push(`Price: ${val.amount === 0 ? 'Free' : `${val.amount} ${val.currency || 'INR'}`}`);
+        }
+      }
+      
+      const hours = facts.find(f => f.fact_key === 'opening_hours');
+      if (hours && typeof hours.fact_value === 'string') {
+        parts.push(`Hours: ${hours.fact_value}`);
+      }
+      
+      if (parts.length > 0) {
+        survivalInfo = `  [Survival Info] ${parts.join(' | ')}`;
+      }
+    }
+
     return [
       `Day ${typeof day === 'number' ? day : '?'}: ${time ? `${time} - ` : ''}${attraction}`,
       ...(note ? [`  ${note}`] : []),
+      ...(survivalInfo ? [survivalInfo] : []),
     ];
   });
 }
@@ -177,14 +204,26 @@ function buildTripPdf(trip: {
   itinerarySnapshot: Prisma.JsonValue | null;
 }): Buffer {
   const destination = [trip.destination.name, trip.destination.region, trip.destination.country].filter(Boolean).join(', ');
+  
+  const plan = objectValue(trip.itinerarySnapshot);
+  const warnings = arrayValue(plan?.warnings).map(w => typeof w === 'string' ? w : null).filter(Boolean);
+  
   const lines = [
     trip.title,
     `Destination: ${destination}`,
     `Dates: ${trip.startDate.toISOString().slice(0, 10)} to ${trip.endDate.toISOString().slice(0, 10)}`,
     '',
-    'Itinerary',
-    ...itineraryLinesFromSnapshot(trip.itinerarySnapshot),
   ];
+
+  if (warnings && warnings.length > 0) {
+    lines.push('--- OFFLINE SURVIVAL WARNINGS ---');
+    warnings.forEach(w => lines.push(`! ${w}`));
+    lines.push('---------------------------------');
+    lines.push('');
+  }
+
+  lines.push('Itinerary');
+  lines.push(...itineraryLinesFromSnapshot(trip.itinerarySnapshot));
 
   return createTextPdf(lines);
 }

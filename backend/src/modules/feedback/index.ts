@@ -10,10 +10,17 @@ import { resolveAttractionId } from '../../shared/utils/idAliases.js';
 
 const router = Router();
 
+// Feature 5: Structured report types for Community Verification Network
+const reportTypeEnum = z.enum([
+  'CLOSED', 'PRICE_CHANGED', 'ACCESSIBILITY_INCORRECT', 'HOURS_INCORRECT',
+  'ROAD_BLOCKED', 'OVERCROWDED', 'FACILITY_UNAVAILABLE', 'OTHER',
+]);
+
 const feedbackSchema = z.object({
   entityId: z.string().min(1).max(100),
   entityType: z.enum(['ATTRACTION', 'FACT', 'CROWD_RECORD']),
   feedbackType: z.enum(['INACCURATE', 'OUTDATED', 'OTHER']),
+  reportType: reportTypeEnum.optional(),
   comment: z.string().max(500).optional(),
 }).strict();
 
@@ -131,6 +138,47 @@ router.post('/', feedbackLimiter, requireAuth, sanitizeBody, async (req, res, ne
         status: feedback.status,
       },
     });
+
+    // ─── Feature 5: Community Verification State Machine ─────────────────────
+    // After accepting the feedback, check if this fact has accumulated enough
+    // independent reports to auto-transition to NEEDS_REVIEW.
+    // Threshold: ≥3 independent reports (from different users) within 7 days.
+    // This is a deterministic threshold rule, NOT an LLM judgment.
+    if (factId) {
+      try {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const recentReports = await prisma.feedback.findMany({
+          where: {
+            factId,
+            status: 'PENDING',
+            createdAt: { gte: sevenDaysAgo },
+          },
+          select: { userId: true },
+        });
+
+        // Count unique reporters
+        const uniqueReporters = new Set(recentReports.map((r) => r.userId));
+
+        // Threshold: 3 independent reporters
+        if (uniqueReporters.size >= 3) {
+          const fact = await prisma.fact.findUnique({ where: { id: factId } });
+          // Only transition VERIFIED/LIVE facts to NEEDS_REVIEW — 
+          // don't double-demote already-low-trust facts
+          if (fact && (fact.verificationStatus === 'VERIFIED' || fact.verificationStatus === 'LIVE')) {
+            await prisma.fact.update({
+              where: { id: factId },
+              data: { verificationStatus: 'DISPUTED' }, // Using DISPUTED as proxy for NEEDS_REVIEW until schema migration
+            });
+            console.log(`[Community Verification] Fact ${factId} auto-transitioned to NEEDS_REVIEW (${uniqueReporters.size} independent reports)`);
+          }
+        }
+      } catch (stateErr) {
+        // State machine failure is non-critical — don't break the feedback response
+        console.error('[Community Verification] State machine error:', stateErr);
+      }
+    }
   } catch (err) {
     if (err instanceof AppError) return next(err);
     if (err instanceof z.ZodError) {

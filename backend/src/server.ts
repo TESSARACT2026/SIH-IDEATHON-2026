@@ -93,6 +93,13 @@ import crowdRouter from './modules/crowd/index.js';
 import emergencyRouter from './modules/emergency/index.js';
 import guideRouter from './modules/guide/index.js';
 import budgetRouter from './modules/budget/index.js';
+import replanRouter from './modules/planner/replan.js';
+import whatifNluRouter from './modules/planner/whatif-nlu.js';
+import suitabilityRouter from './modules/attractions/suitability.js';
+import tripHealthRouter from './modules/scoring/trip-health.js';
+import tourismImpactRouter from './modules/scoring/tourism-impact.js';
+import tripTrustRouter from './modules/scoring/trip-trust.js';
+import groupRouter from './modules/group/index.js';
 
 // ─── API v1 Routes ──────────────────────────────────────────────────────────
 app.use('/api/v1/users', usersRouter);
@@ -113,6 +120,15 @@ app.use('/api/v1/crowd', crowdRouter);
 app.use('/api/v1/emergency', emergencyRouter);
 app.use('/api/v1/guide', guideRouter);
 app.use('/api/v1/budget', budgetRouter);
+
+// ─── Batch 2: Advanced Differentiator Features ─────────────────────────────
+app.use('/api/v1/trips', replanRouter);                     // Feature 1: What-If Replan
+app.use('/api/v1/nlu', strictLimiter, whatifNluRouter);     // Feature 1: What-If NLU
+app.use('/api/v1/attractions', suitabilityRouter);          // Feature 3: Suitability Check
+app.use('/api/v1/scoring', tripHealthRouter);               // Feature 2: Trip Health Score
+app.use('/api/v1/scoring', tourismImpactRouter);            // Feature 4: Tourism Impact
+app.use('/api/v1/scoring', tripTrustRouter);                // Feature 10: Trip Trust Score
+app.use('/api/v1/groups', groupRouter);                     // Feature 8: Group Planning
 
 // ─── 404 Handler ────────────────────────────────────────────────────────────
 app.use((_req, res) => {
