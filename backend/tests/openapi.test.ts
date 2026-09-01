@@ -11,6 +11,7 @@ const requiredPaths = [
   '/api/v1/scoring/trip-health/{id}',
   '/api/v1/scoring/tourism-impact',
   '/api/v1/scoring/trip-trust/{id}',
+  '/api/v1/budget/trips/{id}/breakdown',
   '/api/v1/groups',
   '/api/v1/groups/{code}',
   '/api/v1/groups/{code}/join',

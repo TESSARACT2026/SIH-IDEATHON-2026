@@ -100,6 +100,7 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/guide/attractions/:id` | No | Structured attraction guide with provenance, crowd, and sensitivity data. |
 | GET | `/api/v1/budget/destinations/:id` | No | Calculate destination ticket budget from verified/live price facts. |
 | POST | `/api/v1/budget/estimate` | No | Calculate ticket budget for selected attractions. |
+| GET | `/api/v1/budget/trips/:id/breakdown` | Yes | Calculate transparent saved-trip budget breakdown. |
 | GET | `/api/v1/scoring/trip-health/:id` | Yes | Calculate trip risk/health score for a saved trip. |
 | POST | `/api/v1/scoring/tourism-impact` | No | Compare popular and responsible route impact metrics. |
 | GET | `/api/v1/scoring/trip-trust/:id` | Yes | Aggregate itinerary fact trust into a trip-level score. |
@@ -548,6 +549,14 @@ invent travel claims.
 Budget totals only include `ticket_price` facts whose verification status is
 `VERIFIED` or `LIVE`. Community or unverified prices are returned as line items
 with warnings but excluded from the total.
+
+`GET /api/v1/budget/trips/:id/breakdown?travellerType=INDIAN&travellers=2`
+
+Returns a transparent saved-trip estimate broken into transportation, entry
+tickets, food, local experiences, and buffer. Entry tickets come from
+verified/live `ticket_price` facts frozen in the trip snapshot; the other
+categories are deterministic India travel estimates. The response also includes
+a ready `budgetReductionAction` for the existing what-if replan route.
 
 ### Attraction Suitability
 

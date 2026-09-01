@@ -259,6 +259,13 @@ export const openApiDocument = {
           travellers: { type: 'integer', minimum: 1, maximum: 20, default: 1 },
         },
       },
+      TripBudgetBreakdownQuery: {
+        type: 'object',
+        properties: {
+          travellerType: { type: 'string', enum: ['INDIAN', 'FOREIGN', 'CHILD'], default: 'INDIAN' },
+          travellers: { type: 'integer', minimum: 1, maximum: 20, default: 1 },
+        },
+      },
       TourismImpactRequest: {
         type: 'object',
         additionalProperties: false,
@@ -846,6 +853,19 @@ export const openApiDocument = {
         security: [],
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/BudgetEstimateRequest' } } } },
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/budget/trips/{id}/breakdown': {
+      get: {
+        security: bearerSecurity,
+        tags: ['Budget'],
+        summary: 'Calculate transparent budget breakdown for a saved trip',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'travellerType', in: 'query', schema: { type: 'string', enum: ['INDIAN', 'FOREIGN', 'CHILD'], default: 'INDIAN' } },
+          { name: 'travellers', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 20, default: 1 } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } },
       },
     },
     '/api/v1/scoring/trip-health/{id}': {
