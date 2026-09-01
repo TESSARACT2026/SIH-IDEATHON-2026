@@ -4,9 +4,10 @@
  * Deterministic scoring function combining real signals:
  *   - Weather severity (Open-Meteo data)
  *   - Crowd levels (existing crowding engine)
- *   - Transport/routing issues (ORS)
+ *   - Transport/routing issues (saved route buffers and fallback warnings)
  *   - Verified closures / sensitivity flags
  *   - Accessibility mismatches
+ *   - Emergency readiness
  *
  * Formula: score = 100 - Σ(penalty_i)
  * See SCORING_METHODOLOGY.md for full documentation.
@@ -20,6 +21,7 @@ import { prisma } from '../../shared/db/index.js';
 import { AppError } from '../../shared/middleware/errorHandler.js';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { getWeatherForecast, type WeatherForecastDay } from '../live-data/weather.js';
+import { emergencyContactBundle } from '../emergency/index.js';
 
 const router = Router();
 
@@ -31,11 +33,13 @@ const tripIdParamSchema = z.object({
 // Each weight represents the maximum penalty for that category.
 
 const WEIGHTS = {
-  WEATHER_MAX_PENALTY: 25,      // Severe weather on any trip day
-  CROWD_MAX_PENALTY: 25,        // Average crowd level across itinerary stops
-  CLOSURES_MAX_PENALTY: 20,     // Sensitivity flags / closures affecting stops
+  WEATHER_MAX_PENALTY: 20,      // Severe weather on any trip day
+  CROWD_MAX_PENALTY: 20,        // Average crowd level across itinerary stops
+  TRANSPORT_MAX_PENALTY: 15,    // Long buffers, walking tolerance, fallback routes
+  CLOSURES_MAX_PENALTY: 15,     // Sensitivity flags / closures affecting stops
   ACCESSIBILITY_MAX_PENALTY: 15, // Mismatches between user needs and attraction
-  DATA_QUALITY_MAX_PENALTY: 15,  // Unverified or disputed facts in itinerary
+  EMERGENCY_MAX_PENALTY: 5,     // Helpline and personal contact readiness
+  DATA_QUALITY_MAX_PENALTY: 10,  // Unverified or disputed facts in itinerary
 } as const;
 
 type SubScore = {
@@ -53,11 +57,77 @@ type TripHealthResult = {
   computedAt: string;
 };
 
+type StoredUserPreference = {
+  transportPreference?: string | null;
+  accessibilityMobility?: boolean | null;
+  accessibilityVision?: boolean | null;
+  accessibilityHearing?: boolean | null;
+  accessibilityCognitive?: boolean | null;
+  walkingToleranceMinutes?: number | null;
+};
+
+type HealthPreferences = {
+  transportPreference: string;
+  accessibilityWheelchair: boolean;
+  accessibilityVision: boolean;
+  accessibilityHearing: boolean;
+  accessibilityCognitive: boolean;
+  walkingToleranceMinutes?: number;
+};
+
+type HealthItem = {
+  travelBufferMinutesBefore: number;
+  trustSummary: unknown;
+  attraction?: {
+    name: string;
+    accessibilityWheelchair: boolean;
+    accessibilityVisual: boolean;
+    accessibilityHearing: boolean;
+    accessibilityNotes?: string | null;
+  } | null;
+};
+
 function scoreLabel(score: number): string {
   if (score >= 80) return 'Excellent';
   if (score >= 60) return 'Good';
   if (score >= 40) return 'Fair';
   return 'At Risk';
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function booleanValue(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function numberValue(value: unknown, fallback?: number): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+function trustWarnings(value: unknown): string[] {
+  const warnings = objectValue(value)?.warnings;
+  return Array.isArray(warnings) ? warnings.filter((warning): warning is string => typeof warning === 'string') : [];
+}
+
+export function healthPreferencesFrom(
+  plannerInput: unknown,
+  userPreference?: StoredUserPreference | null,
+): HealthPreferences {
+  const plannerPreferences = objectValue(objectValue(plannerInput)?.preferences);
+  return {
+    transportPreference: stringValue(plannerPreferences?.transportPreference, userPreference?.transportPreference ?? 'MIXED'),
+    accessibilityWheelchair: booleanValue(plannerPreferences?.accessibilityWheelchair, userPreference?.accessibilityMobility ?? false),
+    accessibilityVision: booleanValue(plannerPreferences?.accessibilityVision, userPreference?.accessibilityVision ?? false),
+    accessibilityHearing: booleanValue(plannerPreferences?.accessibilityHearing, userPreference?.accessibilityHearing ?? false),
+    accessibilityCognitive: booleanValue(plannerPreferences?.accessibilityCognitive, userPreference?.accessibilityCognitive ?? false),
+    walkingToleranceMinutes: numberValue(plannerPreferences?.walkingToleranceMinutes, userPreference?.walkingToleranceMinutes ?? undefined),
+  };
 }
 
 // ─── Weather Sub-Score ──────────────────────────────────────────────────────
@@ -157,6 +227,178 @@ function computeCrowdPenalty(
   };
 }
 
+// ─── Transport Sub-Score ───────────────────────────────────────────────────
+
+export function computeTransportPenalty(
+  items: HealthItem[],
+  preferences: HealthPreferences,
+): SubScore {
+  const factors: SubScore['factors'] = [];
+
+  if (items.length === 0) {
+    factors.push({ description: 'No itinerary route segments saved' });
+    return { category: 'transport', score: 100, penalty: 0, maxPenalty: WEIGHTS.TRANSPORT_MAX_PENALTY, factors };
+  }
+
+  let riskUnits = 0;
+  for (const item of items) {
+    const attractionName = item.attraction?.name ?? 'Unknown stop';
+    const buffer = item.travelBufferMinutesBefore;
+    const routingFallback = trustWarnings(item.trustSummary).some((warning) =>
+      warning.toLowerCase().includes('routing unavailable')
+    );
+
+    if (routingFallback) {
+      riskUnits += 0.8;
+      factors.push({ description: `${attractionName}: route unavailable, estimated buffer used` });
+    }
+
+    if (buffer >= 90) {
+      riskUnits += 1;
+      factors.push({ description: `${attractionName}: long travel buffer (${buffer} min)` });
+    } else if (buffer >= 60) {
+      riskUnits += 0.6;
+      factors.push({ description: `${attractionName}: elevated travel buffer (${buffer} min)` });
+    }
+
+    if (
+      preferences.transportPreference === 'WALKING' &&
+      preferences.walkingToleranceMinutes &&
+      buffer > preferences.walkingToleranceMinutes
+    ) {
+      riskUnits += 0.6;
+      factors.push({ description: `${attractionName}: walking buffer exceeds ${preferences.walkingToleranceMinutes} min tolerance` });
+    }
+  }
+
+  const penalty = Math.round(Math.min(1, riskUnits / items.length) * WEIGHTS.TRANSPORT_MAX_PENALTY);
+  return {
+    category: 'transport',
+    score: Math.round(100 - (penalty / WEIGHTS.TRANSPORT_MAX_PENALTY) * 100),
+    penalty,
+    maxPenalty: WEIGHTS.TRANSPORT_MAX_PENALTY,
+    factors: factors.length > 0 ? factors : [{ description: 'Route buffers look manageable' }],
+  };
+}
+
+// ─── Accessibility Sub-Score ───────────────────────────────────────────────
+
+export function computeAccessibilityPenalty(
+  items: HealthItem[],
+  preferences: HealthPreferences,
+): SubScore {
+  const factors: SubScore['factors'] = [];
+  const needs = [
+    preferences.accessibilityWheelchair ? 'mobility' : null,
+    preferences.accessibilityVision ? 'vision' : null,
+    preferences.accessibilityHearing ? 'hearing' : null,
+    preferences.accessibilityCognitive ? 'cognitive' : null,
+  ].filter(Boolean) as string[];
+
+  if (needs.length === 0) {
+    return {
+      category: 'accessibility',
+      score: 100,
+      penalty: 0,
+      maxPenalty: WEIGHTS.ACCESSIBILITY_MAX_PENALTY,
+      factors: [{ description: 'No accessibility needs recorded for this trip' }],
+    };
+  }
+
+  const assessableItems = items.filter((item) => item.attraction);
+  if (assessableItems.length === 0) {
+    const penalty = Math.round(WEIGHTS.ACCESSIBILITY_MAX_PENALTY * 0.5);
+    return {
+      category: 'accessibility',
+      score: Math.round(100 - (penalty / WEIGHTS.ACCESSIBILITY_MAX_PENALTY) * 100),
+      penalty,
+      maxPenalty: WEIGHTS.ACCESSIBILITY_MAX_PENALTY,
+      factors: [{ description: 'No attraction accessibility data available for this itinerary' }],
+    };
+  }
+
+  let problemUnits = 0;
+  for (const item of assessableItems) {
+    const attraction = item.attraction!;
+    if (preferences.accessibilityWheelchair && !attraction.accessibilityWheelchair) {
+      problemUnits++;
+      factors.push({ description: `${attraction.name}: mobility accessibility not confirmed` });
+    }
+    if (preferences.accessibilityVision && !attraction.accessibilityVisual) {
+      problemUnits++;
+      factors.push({ description: `${attraction.name}: visual accessibility not confirmed` });
+    }
+    if (preferences.accessibilityHearing && !attraction.accessibilityHearing) {
+      problemUnits++;
+      factors.push({ description: `${attraction.name}: hearing accessibility not confirmed` });
+    }
+    if (preferences.accessibilityCognitive && !attraction.accessibilityNotes?.toLowerCase().includes('cognitive')) {
+      problemUnits += 0.5;
+      factors.push({ description: `${attraction.name}: cognitive accessibility detail not available` });
+    }
+  }
+
+  const checks = assessableItems.length * needs.length;
+  const penalty = Math.round(Math.min(1, problemUnits / Math.max(1, checks)) * WEIGHTS.ACCESSIBILITY_MAX_PENALTY);
+  return {
+    category: 'accessibility',
+    score: Math.round(100 - (penalty / WEIGHTS.ACCESSIBILITY_MAX_PENALTY) * 100),
+    penalty,
+    maxPenalty: WEIGHTS.ACCESSIBILITY_MAX_PENALTY,
+    factors: factors.length > 0 ? factors : [{ description: 'No accessibility mismatches detected' }],
+  };
+}
+
+// ─── Emergency Sub-Score ───────────────────────────────────────────────────
+
+export function computeEmergencyPenalty(
+  destination: { region: string | null },
+  user: { emergencyContactPhone: string | null },
+): SubScore {
+  const factors: SubScore['factors'] = [];
+  const bundle = emergencyContactBundle(destination);
+  let penalty = 0;
+
+  if (bundle.contacts.length === 0) {
+    return {
+      category: 'emergency',
+      score: 0,
+      penalty: WEIGHTS.EMERGENCY_MAX_PENALTY,
+      maxPenalty: WEIGHTS.EMERGENCY_MAX_PENALTY,
+      factors: [{ description: 'No emergency contacts available for this destination' }],
+    };
+  }
+
+  if (!bundle.contacts.some((contact) => contact.available24x7 && contact.category === 'emergency')) {
+    penalty += 3;
+    factors.push({ description: 'No 24x7 emergency helpline available' });
+  }
+
+  if (!bundle.contacts.some((contact) => contact.category === 'tourist')) {
+    penalty += 1;
+    factors.push({ description: 'No tourist helpline available' });
+  }
+
+  if (destination.region && bundle.regionalCount === 0) {
+    penalty += 1;
+    factors.push({ description: `No regional emergency contacts mapped for ${destination.region}` });
+  }
+
+  if (!user.emergencyContactPhone) {
+    penalty += 1;
+    factors.push({ description: 'Traveler personal emergency contact is not set' });
+  }
+
+  penalty = Math.min(penalty, WEIGHTS.EMERGENCY_MAX_PENALTY);
+  return {
+    category: 'emergency',
+    score: Math.round(100 - (penalty / WEIGHTS.EMERGENCY_MAX_PENALTY) * 100),
+    penalty,
+    maxPenalty: WEIGHTS.EMERGENCY_MAX_PENALTY,
+    factors: factors.length > 0 ? factors : [{ description: 'Emergency contacts and traveler contact are available' }],
+  };
+}
+
 // ─── GET /api/v1/scoring/trip-health/:id ────────────────────────────────────
 
 router.get('/trip-health/:id', requireAuth, async (req, res, next) => {
@@ -167,6 +409,12 @@ router.get('/trip-health/:id', requireAuth, async (req, res, next) => {
       where: { id },
       include: {
         destination: true,
+        user: {
+          select: {
+            emergencyContactPhone: true,
+            preferences: true,
+          },
+        },
         itineraries: {
           include: {
             items: {
@@ -192,6 +440,10 @@ router.get('/trip-health/:id', requireAuth, async (req, res, next) => {
     }
 
     const items = trip.itineraries[0]?.items ?? [];
+    const preferences = healthPreferencesFrom(
+      trip.plannerInput ?? trip.itineraries[0]?.plannerInput ?? objectValue(trip.itinerarySnapshot)?.plannerInput,
+      trip.user.preferences,
+    );
     const tripDays = Math.max(1, Math.ceil(
       (trip.endDate.getTime() - trip.startDate.getTime()) / (1000 * 60 * 60 * 24)
     ));
@@ -226,7 +478,10 @@ router.get('/trip-health/:id', requireAuth, async (req, res, next) => {
       }));
     const crowdSubScore = computeCrowdPenalty(crowdLevels);
 
-    // 3. Closures sub-score
+    // 3. Transport sub-score
+    const transportSubScore = computeTransportPenalty(items, preferences);
+
+    // 4. Closures sub-score
     const closureFactors: SubScore['factors'] = [];
     let closurePenalty = 0;
     for (const item of items) {
@@ -251,7 +506,15 @@ router.get('/trip-health/:id', requireAuth, async (req, res, next) => {
       factors: closureFactors.length > 0 ? closureFactors : [{ description: 'No active closures or restrictions' }],
     };
 
-    // 4. Data quality sub-score
+    // 5. Accessibility sub-score
+    const accessibilitySubScore = computeAccessibilityPenalty(items, preferences);
+
+    // 6. Emergency readiness sub-score
+    const emergencySubScore = computeEmergencyPenalty(trip.destination, {
+      emergencyContactPhone: trip.user.emergencyContactPhone,
+    });
+
+    // 7. Data quality sub-score
     let totalFacts = 0;
     let unverifiedFacts = 0;
     const dataFactors: SubScore['factors'] = [];
@@ -279,17 +542,16 @@ router.get('/trip-health/:id', requireAuth, async (req, res, next) => {
       factors: dataFactors,
     };
 
-    // 5. Accessibility sub-score (placeholder — no user prefs in trip record yet)
-    const accessibilitySubScore: SubScore = {
-      category: 'accessibility',
-      score: 100,
-      penalty: 0,
-      maxPenalty: WEIGHTS.ACCESSIBILITY_MAX_PENALTY,
-      factors: [{ description: 'No accessibility mismatches detected' }],
-    };
-
     // ─── Aggregate ──────────────────────────────────────────────────────────
-    const subScores = [weatherSubScore, crowdSubScore, closureSubScore, dataSubScore, accessibilitySubScore];
+    const subScores = [
+      weatherSubScore,
+      crowdSubScore,
+      transportSubScore,
+      closureSubScore,
+      accessibilitySubScore,
+      emergencySubScore,
+      dataSubScore,
+    ];
     const totalPenalty = subScores.reduce((sum, s) => sum + s.penalty, 0);
     const score = Math.max(0, Math.min(100, 100 - totalPenalty));
 

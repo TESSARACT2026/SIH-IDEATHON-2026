@@ -805,6 +805,7 @@ export const openApiDocument = {
         security: bearerSecurity,
         tags: ['Scoring'],
         summary: 'Calculate trip health/risk score',
+        description: 'Includes weather, crowd, transport/routing, closure, accessibility, emergency-readiness, and data-quality sub-scores.',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
       },

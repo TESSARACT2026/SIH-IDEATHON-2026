@@ -533,8 +533,9 @@ is not recommended.
 
 `GET /api/v1/scoring/trip-health/:id`
 
-Requires auth. Computes weather, crowd, closure/sensitivity, data-quality, and
-placeholder accessibility sub-scores for the current user's saved trip.
+Requires auth. Computes weather, crowd, transport/routing,
+closure/sensitivity, accessibility, emergency-readiness, and data-quality
+sub-scores for the current user's saved trip.
 
 `POST /api/v1/scoring/tourism-impact`
 
