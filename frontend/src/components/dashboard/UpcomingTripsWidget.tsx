@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
@@ -11,15 +11,33 @@ interface UpcomingTripsProps {}
 export const UpcomingTripsWidget: React.FC<UpcomingTripsProps> = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const [localTrips, setLocalTrips] = useState<any[]>([]);
 
-  const { data: trips = [], isLoading } = useQuery({
+  useEffect(() => {
+    const stored = JSON.parse(localStorage.getItem('margdarshak_drafts') || '[]');
+    setLocalTrips(stored);
+  }, []);
+
+  const { data: apiTrips = [], isLoading } = useQuery({
     queryKey: ['trips-upcoming'],
     queryFn: tripsApi.list,
     enabled: !!user,
   });
 
+  const allTrips = [
+    ...apiTrips,
+    ...localTrips
+      .filter((d) => d.status && d.status !== 'DRAFT')
+      .map((d) => ({
+        id: d.id,
+        title: d.title,
+        startDate: d.startDate,
+        status: d.status,
+      })),
+  ];
+
   // Filter only upcoming (not completed)
-  const upcomingTrips = trips
+  const upcomingTrips = allTrips
     .filter((trip) => trip.status !== 'COMPLETED')
     .slice(0, 3);
 

@@ -36,8 +36,23 @@ export const TripDetailsPage: React.FC = () => {
 
   const { data: trip, isLoading, error } = useQuery({
     queryKey: ['trip', id],
-    queryFn: () => tripsApi.get(id!),
-    enabled: !!id && !!user,
+    queryFn: async () => {
+      try {
+        if (user) {
+          return await tripsApi.get(id!);
+        }
+        throw new Error('Not logged in');
+      } catch (err) {
+        // Fallback to check if it exists in local storage
+        const stored = JSON.parse(localStorage.getItem('margdarshak_drafts') || '[]');
+        const localTrip = stored.find((t: any) => t.id === id);
+        if (localTrip) {
+          return localTrip;
+        }
+        throw err;
+      }
+    },
+    enabled: !!id,
   });
 
   const downloadTripPdf = async () => {
