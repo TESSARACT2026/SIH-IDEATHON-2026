@@ -31,8 +31,15 @@ export const MyTripsPage: React.FC = () => {
   // Fetch trips only when authenticated
   const { data: trips = [], isLoading, error } = useQuery({
     queryKey: ['trips'],
-    queryFn: tripsApi.list,
+    queryFn: async () => {
+      try {
+        return await tripsApi.list();
+      } catch {
+        return [];
+      }
+    },
     enabled: !!user,
+    retry: 1,
   });
 
   const deleteMutation = useMutation({
@@ -99,7 +106,7 @@ export const MyTripsPage: React.FC = () => {
         <div className="mb-8 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">My Trips</h1>
-            <p className="text-gray-600">Logged in as <span className="font-semibold text-gray-800">{user.email}</span></p>
+            <p className="text-gray-600">Logged in as <span className="font-semibold text-gray-800">{user.name || user.email.split('@')[0]}</span></p>
           </div>
         </div>
 
@@ -139,8 +146,10 @@ export const MyTripsPage: React.FC = () => {
                 }`}
               >
                 {tab}
-                {tab === 'drafts' && localDrafts.length > 0 && (
-                  <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-orange-500 text-white rounded-full">{localDrafts.length}</span>
+                {tab === 'drafts' && localDrafts.filter(d => !d.status || d.status === 'DRAFT').length > 0 && (
+                  <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-orange-500 text-white rounded-full">
+                    {localDrafts.filter(d => !d.status || d.status === 'DRAFT').length}
+                  </span>
                 )}
               </button>
             ))}
@@ -150,14 +159,14 @@ export const MyTripsPage: React.FC = () => {
         {/* Local Drafts Tab */}
         {activeTab === 'drafts' && (
           <div className="space-y-4">
-            {localDrafts.length === 0 && (
+            {localDrafts.filter(d => !d.status || d.status === 'DRAFT').length === 0 && (
               <div className="text-center py-16">
                 <div className="text-5xl mb-4">📋</div>
                 <h3 className="text-lg font-bold text-gray-800 mb-2">No drafts saved</h3>
                 <p className="text-gray-500 text-sm">Go to Plan Trip and save a draft to see it here.</p>
               </div>
             )}
-            {localDrafts.map((draft) => (
+            {localDrafts.filter(d => !d.status || d.status === 'DRAFT').map((draft) => (
               <div key={draft.id} className="bg-white rounded-2xl border-2 border-dashed border-orange-200 p-6 hover:shadow-lg transition-all duration-300">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -207,14 +216,27 @@ export const MyTripsPage: React.FC = () => {
           </div>
         )}
 
-        {/* API Trips */}
+        {/* API & Local Verified Trips */}
         {activeTab !== 'drafts' && (
         <div className="space-y-4">
-          {trips.filter(trip => {
+          {[
+            ...trips,
+            ...localDrafts.filter(d => d.status && d.status !== 'DRAFT').map(d => ({
+              id: d.id,
+              title: d.title,
+              destination: { name: d.to?.split('(')[0].trim() || 'Unknown Destination' },
+              startDate: d.startDate,
+              endDate: d.endDate,
+              status: d.status,
+              isPublic: false,
+              shareToken: null,
+              hasSnapshot: false,
+            }))
+          ].filter(trip => {
             if (activeTab === 'upcoming') return trip.status !== 'COMPLETED';
             if (activeTab === 'completed') return trip.status === 'COMPLETED';
             return true;
-          }).map((trip) => (
+          }).map((trip: any) => (
             <div key={trip.id} className="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-lg transition-all duration-300">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">

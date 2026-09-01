@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from './supabase';
 import { User, Session } from '@supabase/supabase-js';
-import { apiClient } from '../api/client';
+import { apiClient, tokenStore } from '../api/client';
 
 export type AuthUser = {
   id: string;
@@ -28,19 +28,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Set up API client interceptor to attach token
-  useEffect(() => {
-    const requestInterceptor = apiClient.interceptors.request.use((config) => {
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-      return config;
-    });
-
-    return () => {
-      apiClient.interceptors.request.eject(requestInterceptor);
-    };
-  }, [token]);
 
   const updateState = (session: Session | null) => {
     if (session?.user) {
@@ -49,9 +36,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         email: session.user.email || '',
         name: session.user.user_metadata?.name || session.user.user_metadata?.full_name,
       });
-      setToken(session.access_token);
+      const tok = session.access_token;
+      tokenStore.current = tok;
+      setToken(tok);
     } else {
       setUser(null);
+      tokenStore.current = '';
       setToken(null);
     }
     setIsLoading(false);
