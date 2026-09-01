@@ -83,6 +83,7 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | POST | `/api/v1/trips` | Yes | Create a trip. |
 | GET | `/api/v1/trips/:id` | Yes | Get a trip owned by the current user. |
 | GET | `/api/v1/trips/:id/export` | Yes | Export a saved trip itinerary snapshot as PDF. |
+| GET | `/api/v1/trips/:id/offline-pack` | Yes | Download a saved trip offline survival pack as JSON. |
 | POST | `/api/v1/trips/:id/itinerary/replan` | Yes | Re-run deterministic planner with a what-if constraint delta. |
 | PATCH | `/api/v1/trips/:id` | Yes | Update trip metadata and sharing state. |
 | POST | `/api/v1/trips/:id/snapshot` | Yes | Save a frozen itinerary snapshot on a trip. |
@@ -425,6 +426,13 @@ the backend stores it for later replans.
 
 Returns `application/pdf` for the current user's saved `itinerarySnapshot`.
 
+`GET /api/v1/trips/:id/offline-pack`
+
+Returns a JSON offline survival pack for the current user's saved
+`itinerarySnapshot`, including itinerary stops, trusted fact summaries,
+destination coordinates, emergency contacts, personal emergency contact,
+language phrases, warnings, alternatives, and last verified timestamps.
+
 `GET /api/v1/trips/share/:token/export`
 
 Returns the same PDF export for public shared trips. Export responses never
@@ -643,5 +651,4 @@ Generates an itinerary from persisted participant preferences.
 ## Current Gaps
 
 - Backend auth endpoints documented previously do not exist; use Supabase auth.
-- Offline survival mode is only PDF export, not an offline-pack API.
 - Voice support is NLU/TTS only, not a context-aware command backend.

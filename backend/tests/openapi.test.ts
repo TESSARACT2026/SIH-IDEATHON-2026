@@ -5,6 +5,7 @@ import { openApiDocument } from '../src/swagger.js';
 const requiredPaths = [
   '/api/v1/nlu/extract-delta',
   '/api/v1/trips/{id}/itinerary/replan',
+  '/api/v1/trips/{id}/offline-pack',
   '/api/v1/attractions/{id}/suitability',
   '/api/v1/scoring/trip-health/{id}',
   '/api/v1/scoring/tourism-impact',

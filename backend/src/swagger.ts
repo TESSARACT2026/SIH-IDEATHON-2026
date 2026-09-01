@@ -702,6 +702,15 @@ export const openApiDocument = {
         responses: { '200': { $ref: '#/components/responses/Pdf' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } },
       },
     },
+    '/api/v1/trips/{id}/offline-pack': {
+      get: {
+        security: bearerSecurity,
+        tags: ['Trips'],
+        summary: 'Download owned trip offline survival pack',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } },
+      },
+    },
     '/api/v1/trips/{id}/itinerary/replan': {
       post: {
         security: bearerSecurity,
