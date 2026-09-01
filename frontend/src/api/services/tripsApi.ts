@@ -46,34 +46,26 @@ export interface UpdateTripPayload {
 
 export const tripsApi = {
   /** List current user's trips */
-  list: async (token: string): Promise<Trip[]> => {
-    const res = await apiClient.get('/trips', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  list: async (): Promise<Trip[]> => {
+    const res = await apiClient.get('/trips');
     return res.data.data;
   },
 
   /** Get a single trip by ID */
-  get: async (id: string, token: string): Promise<Trip> => {
-    const res = await apiClient.get(`/trips/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  get: async (id: string): Promise<Trip> => {
+    const res = await apiClient.get(`/trips/${id}`);
     return res.data.data;
   },
 
   /** Create a new trip */
-  create: async (payload: CreateTripPayload, token: string): Promise<Trip> => {
-    const res = await apiClient.post('/trips', payload, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  create: async (payload: CreateTripPayload): Promise<Trip> => {
+    const res = await apiClient.post('/trips', payload);
     return res.data.data;
   },
 
   /** Update trip metadata */
-  update: async (id: string, payload: UpdateTripPayload, token: string): Promise<Trip> => {
-    const res = await apiClient.patch(`/trips/${id}`, payload, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  update: async (id: string, payload: UpdateTripPayload): Promise<Trip> => {
+    const res = await apiClient.patch(`/trips/${id}`, payload);
     return res.data.data;
   },
 
@@ -81,31 +73,32 @@ export const tripsApi = {
   saveSnapshot: async (
     id: string,
     itinerarySnapshot: Record<string, unknown>,
-    token: string,
   ): Promise<{ hasSnapshot: boolean; updatedAt: string; message: string }> => {
     const res = await apiClient.post(
       `/trips/${id}/snapshot`,
       { itinerarySnapshot },
-      { headers: { Authorization: `Bearer ${token}` } },
     );
     return res.data.data;
   },
 
   /** Toggle public sharing. Returns shareToken and shareUrl if made public. */
-  setPublic: async (id: string, isPublic: boolean, token: string) => {
+  setPublic: async (id: string, isPublic: boolean) => {
     const res = await apiClient.patch(
       `/trips/${id}`,
       { isPublic },
-      { headers: { Authorization: `Bearer ${token}` } },
     );
     return res.data.data as { isPublic: boolean; shareToken: string | null; shareUrl: string | null };
   },
 
   /** Delete a trip */
-  delete: async (id: string, token: string): Promise<void> => {
-    await apiClient.delete(`/trips/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  delete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/trips/${id}`);
+  },
+
+  /** Download authenticated trip PDF export */
+  exportPdf: async (id: string): Promise<Blob> => {
+    const res = await apiClient.get(`/trips/${id}/export`, { responseType: 'blob' });
+    return res.data;
   },
 
   /** Fetch a publicly shared trip by share token — NO auth required */
@@ -113,38 +106,10 @@ export const tripsApi = {
     const res = await apiClient.get(`/trips/share/${shareToken}`);
     return res.data.data;
   },
-};
 
-// ─── Auth API ────────────────────────────────────────────────────────────────
-
-export interface AuthUser {
-  id: string;
-  email: string;
-  name: string | null;
-}
-
-export interface AuthResponse {
-  user: AuthUser;
-  accessToken: string;
-}
-
-export const authApi = {
-  register: async (email: string, password: string, name?: string): Promise<AuthResponse> => {
-    const res = await apiClient.post('/auth/register', { email, password, name });
-    return res.data.data;
-  },
-
-  login: async (email: string, password: string): Promise<AuthResponse> => {
-    const res = await apiClient.post('/auth/login', { email, password });
-    return res.data.data;
-  },
-
-  refresh: async (): Promise<AuthResponse> => {
-    const res = await apiClient.post('/auth/refresh');
-    return res.data.data;
-  },
-
-  logout: async (): Promise<void> => {
-    await apiClient.post('/auth/logout');
+  /** Public PDF URL for shared trip */
+  exportPublicPdf: (shareToken: string): string => {
+    const baseUrl = apiClient.defaults.baseURL ?? '/api/v1';
+    return `${baseUrl}/trips/share/${shareToken}/export`;
   },
 };

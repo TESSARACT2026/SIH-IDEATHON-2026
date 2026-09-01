@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
-import { Cloud, MapPin, Calendar, Search, Loader2, Thermometer, CloudRain, Sun, CloudLightning, CloudSnow } from 'lucide-react';
+import { Cloud, MapPin, Calendar, Search, Loader2, Thermometer, CloudRain, Sun, CloudLightning, CloudSnow, Navigation } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { knowledgeApi } from '../api/services/knowledgeApi';
+import { liveApi } from '../api/services/liveApi';
+import type { LiveWeatherData } from '../types/domain';
 
 interface WeatherDay {
   date: string;
@@ -9,13 +13,33 @@ interface WeatherDay {
   weatherCode: number;
 }
 
+interface CurrentWeatherResult {
+  location: string;
+  weather: LiveWeatherData;
+  lat: number;
+  lon: number;
+}
+
 export const WeatherPage: React.FC = () => {
-  const [destination, setDestination] = useState('');
+  const [destinationId, setDestinationId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [error, setError] = useState('');
   const [results, setResults] = useState<{ location: string; forecast: WeatherDay[] } | null>(null);
+  const [currentWeather, setCurrentWeather] = useState<CurrentWeatherResult | null>(null);
+
+  const { data: destinations = [] } = useQuery({
+    queryKey: ['destinations'],
+    queryFn: knowledgeApi.getDestinations,
+  });
+
+  React.useEffect(() => {
+    if (!destinationId && destinations.length > 0) {
+      setDestinationId(destinations[0].id);
+    }
+  }, [destinationId, destinations]);
 
   // Weather codes interpretation (WMO Weather interpretation codes)
   const getWeatherInfo = (code: number) => {
@@ -29,9 +53,52 @@ export const WeatherPage: React.FC = () => {
     return { icon: <Cloud className="w-8 h-8 text-gray-400" />, text: 'Unknown' };
   };
 
+  const getCodeFromCondition = (condition = '') => {
+    const normalized = condition.toLowerCase();
+    if (normalized.includes('clear')) return 0;
+    if (normalized.includes('rain')) return 61;
+    if (normalized.includes('snow')) return 71;
+    if (normalized.includes('thunder')) return 95;
+    return 2;
+  };
+
+  const getCurrentPosition = () =>
+    new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+      });
+    });
+
+  const handleUseCurrentLocation = async () => {
+    if (!('geolocation' in navigator)) {
+      setError('Your browser does not support location access.');
+      return;
+    }
+
+    setLocationLoading(true);
+    setError('');
+
+    try {
+      const position = await getCurrentPosition();
+      const { latitude, longitude } = position.coords;
+      const weather = await liveApi.getLiveWeather(latitude, longitude);
+      setCurrentWeather({
+        location: 'Your current location',
+        weather,
+        lat: latitude,
+        lon: longitude,
+      });
+    } catch (err: any) {
+      setError(err.message || 'Could not fetch weather for your current location.');
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!destination || !startDate || !endDate) {
+    if (!destinationId || !startDate || !endDate) {
       setError('Please fill in all fields');
       return;
     }
@@ -54,40 +121,22 @@ export const WeatherPage: React.FC = () => {
     setResults(null);
 
     try {
-      // Step 1: Geocoding
-      const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(destination)}&count=1`);
-      const geoData = await geoRes.json();
-      
-      if (!geoData.results || geoData.results.length === 0) {
-        throw new Error('Destination not found. Please try another location.');
-      }
-      
-      const loc = geoData.results[0];
-      
-      // Step 2: Fetch weather
-      // Note: open-meteo takes dates in YYYY-MM-DD format
-      const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&daily=temperature_2m_max,temperature_2m_min,weathercode&start_date=${startDate}&end_date=${endDate}&timezone=auto`);
-      
-      if (!weatherRes.ok) {
-        throw new Error('Weather data is not available for these dates yet. Try dates within the next 14 days.');
-      }
+      const destination = destinations.find((item) => item.id === destinationId);
+      if (!destination) throw new Error('Destination not found. Please try another location.');
 
-      const weatherData = await weatherRes.json();
-      
-      if (!weatherData.daily) {
-        throw new Error('Could not retrieve daily forecast');
+      const forecast = await liveApi.getWeatherForecast(
+        destination.latitude,
+        destination.longitude,
+        startDate,
+        endDate
+      );
+      if (forecast.length === 0) {
+        throw new Error('No forecast data is available for the selected date range.');
       }
-
-      const forecast: WeatherDay[] = weatherData.daily.time.map((time: string, index: number) => ({
-        date: time,
-        maxTemp: weatherData.daily.temperature_2m_max[index],
-        minTemp: weatherData.daily.temperature_2m_min[index],
-        weatherCode: weatherData.daily.weathercode[index],
-      }));
 
       setResults({
-        location: `${loc.name}, ${loc.admin1 || loc.country}`,
-        forecast
+        location: `${destination.name}, ${destination.region || destination.country}`,
+        forecast,
       });
 
     } catch (err: any) {
@@ -114,13 +163,17 @@ export const WeatherPage: React.FC = () => {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Destination</label>
               <div className="relative">
                 <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="e.g. Manali, Paris, Tokyo"
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
+                <select
+                  value={destinationId}
+                  onChange={(e) => setDestinationId(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-slate-900 dark:text-white"
-                />
+                >
+                  {destinations.map((destination) => (
+                    <option key={destination.id} value={destination.id}>
+                      {destination.name}, {destination.region || destination.country}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -152,31 +205,74 @@ export const WeatherPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="md:col-span-4 flex items-center justify-between">
+            <div className="md:col-span-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               {error ? (
                 <div className="text-red-500 text-sm font-medium">{error}</div>
               ) : <div />}
-              
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-all shadow-lg shadow-blue-500/30 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Fetching Forecast...
-                  </>
-                ) : (
-                  <>
-                    <Search className="w-5 h-5" />
-                    Get Weather
-                  </>
-                )}
-              </button>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={handleUseCurrentLocation}
+                  disabled={locationLoading}
+                  className="px-6 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {locationLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Navigation className="w-5 h-5" />}
+                  Use My Location
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-all shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Fetching Forecast...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-5 h-5" />
+                      Get Weather
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </form>
         </div>
+
+        {currentWeather && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 mb-8 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-blue-500 mb-1">Real-time weather</p>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">{currentWeather.location}</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {currentWeather.lat.toFixed(3)}, {currentWeather.lon.toFixed(3)}
+                  {currentWeather.weather.source ? ` • ${currentWeather.weather.source}` : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-5">
+                <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-full">
+                  {getWeatherInfo(getCodeFromCondition(currentWeather.weather.condition)).icon}
+                </div>
+                <div>
+                  <p className="text-4xl font-black text-slate-900 dark:text-white">
+                    {Math.round(currentWeather.weather.temperature_celsius ?? currentWeather.weather.temperature ?? 0)}°C
+                  </p>
+                  <p className="capitalize text-sm font-semibold text-slate-600 dark:text-slate-300">
+                    {currentWeather.weather.condition}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Humidity {currentWeather.weather.humidity ?? '--'}% • Wind {currentWeather.weather.windSpeed ?? '--'} km/h
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {results && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">

@@ -188,7 +188,7 @@ export const TripWizard: React.FC<TripWizardProps> = ({
                 {t('planner.wheelchairAccess')}
               </span>
               <span className="text-[11px] text-emerald-700">
-                Filters only strictly verified accessible venues
+                Filters venues marked wheelchair accessible
               </span>
             </div>
           </div>

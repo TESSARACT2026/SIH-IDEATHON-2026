@@ -20,6 +20,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const navLinks = [
     { path: '/dashboard', label: t('nav.dashboard', 'Dashboard'), icon: <LayoutDashboard size={15} /> },
@@ -37,6 +38,12 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   ];
 
   const isActive = (path: string) => location.pathname === path;
+
+  const handleSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    if (query) navigate(`/explore?q=${encodeURIComponent(query)}`);
+  };
 
   return (
     <header className="fixed top-0 right-0 left-0 lg:left-64 h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 md:px-6 z-30 gap-4 transition-colors">
@@ -69,14 +76,16 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
       {/* Right Actions */}
       <div className="flex items-center gap-3 ml-auto flex-shrink-0">
-        <div className="relative hidden md:block">
+        <form onSubmit={handleSearch} className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
           <input
             type="text"
             placeholder="Search..."
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
             className="w-48 lg:w-96 pl-9 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 transition-all duration-300"
           />
-        </div>
+        </form>
 
         {/* Theme Toggle */}
         <button

@@ -1,23 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
 import { useAuth } from '../lib/AuthContext';
-import { apiClient } from '../api/client';
+import { usersApi, UserPreferences } from '../api/services/usersApi';
 import { User, Settings, Heart, AlertCircle, Save } from 'lucide-react';
-
-interface Preferences {
-  budgetBand: string;
-  pace: string;
-  groupType: string;
-  transportPreference: string;
-  accessibilityMobility: boolean;
-  accessibilityVision: boolean;
-  accessibilityHearing: boolean;
-  accessibilityCognitive: boolean;
-}
 
 export const ProfilePage: React.FC = () => {
   const { user } = useAuth();
-  const [preferences, setPreferences] = useState<Preferences | null>(null);
+  const [preferences, setPreferences] = useState<UserPreferences | null>(null);
   const [profile, setProfile] = useState<{ emergencyContactName?: string; emergencyContactPhone?: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -27,13 +16,13 @@ export const ProfilePage: React.FC = () => {
     const fetchData = async () => {
       try {
         const [prefRes, profRes] = await Promise.all([
-          apiClient.get('/users/me/preferences'),
-          apiClient.get('/users/me')
+          usersApi.getPreferences(),
+          usersApi.getMe(),
         ]);
-        setPreferences(prefRes.data.data);
+        setPreferences(prefRes);
         setProfile({
-          emergencyContactName: profRes.data.data.emergencyContactName || '',
-          emergencyContactPhone: profRes.data.data.emergencyContactPhone || '',
+          emergencyContactName: profRes.emergencyContactName || '',
+          emergencyContactPhone: profRes.emergencyContactPhone || '',
         });
       } catch (err) {
         console.error('Failed to load data:', err);
@@ -51,10 +40,10 @@ export const ProfilePage: React.FC = () => {
     try {
       const promises = [];
       if (preferences) {
-        promises.push(apiClient.put('/users/me/preferences', preferences));
+        promises.push(usersApi.updatePreferences(preferences));
       }
       if (profile) {
-        promises.push(apiClient.patch('/users/me', {
+        promises.push(usersApi.updateMe({
           emergencyContactName: profile.emergencyContactName,
           emergencyContactPhone: profile.emergencyContactPhone
         }));
@@ -167,7 +156,7 @@ export const ProfilePage: React.FC = () => {
                     <label className="block text-sm font-medium text-slate-400 mb-1">Budget Band</label>
                     <select 
                       value={preferences.budgetBand || 'MODERATE'} 
-                      onChange={(e) => setPreferences({ ...preferences, budgetBand: e.target.value })}
+                      onChange={(e) => setPreferences({ ...preferences, budgetBand: e.target.value as UserPreferences['budgetBand'] })}
                       className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-orange-500 transition-colors"
                     >
                       <option value="BUDGET">Budget Friendly</option>
@@ -179,7 +168,7 @@ export const ProfilePage: React.FC = () => {
                     <label className="block text-sm font-medium text-slate-400 mb-1">Travel Pace</label>
                     <select 
                       value={preferences.pace || 'MODERATE'} 
-                      onChange={(e) => setPreferences({ ...preferences, pace: e.target.value })}
+                      onChange={(e) => setPreferences({ ...preferences, pace: e.target.value as UserPreferences['pace'] })}
                       className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-orange-500 transition-colors"
                     >
                       <option value="RELAXED">Relaxed (Slow travel)</option>
@@ -191,7 +180,7 @@ export const ProfilePage: React.FC = () => {
                     <label className="block text-sm font-medium text-slate-400 mb-1">Group Type</label>
                     <select 
                       value={preferences.groupType || 'SOLO'} 
-                      onChange={(e) => setPreferences({ ...preferences, groupType: e.target.value })}
+                      onChange={(e) => setPreferences({ ...preferences, groupType: e.target.value as UserPreferences['groupType'] })}
                       className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-orange-500 transition-colors"
                     >
                       <option value="SOLO">Solo Traveler</option>
@@ -204,7 +193,7 @@ export const ProfilePage: React.FC = () => {
                     <label className="block text-sm font-medium text-slate-400 mb-1">Transport Mode</label>
                     <select 
                       value={preferences.transportPreference || 'MIXED'} 
-                      onChange={(e) => setPreferences({ ...preferences, transportPreference: e.target.value })}
+                      onChange={(e) => setPreferences({ ...preferences, transportPreference: e.target.value as UserPreferences['transportPreference'] })}
                       className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-orange-500 transition-colors"
                     >
                       <option value="WALKING">Walking primary</option>

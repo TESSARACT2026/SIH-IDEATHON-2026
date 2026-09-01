@@ -44,16 +44,16 @@
     "exploreTitle": "खोजें",
     "exploreSubtitle": "अतुल्य",
     "exploreCountry": "भारत",
-    "exploreDesc": "भारत भर में सत्यापित स्थान, स्मार्ट यात्रा योजनाएं और रियल-टाइम जानकारी खोजें।",
+    "exploreDesc": "भारत भर में स्रोत-सचेत स्थान, स्मार्ट यात्रा योजनाएं और रियल-टाइम जानकारी खोजें।",
     "searchPlaceholder": "आप कहाँ जाना चाहते हैं?",
-    "verifiedPlaces": "सत्यापित स्थान",
-    "trustedDesc": "100% विश्वसनीय",
+    "verifiedPlaces": "विश्वसनीय रिकॉर्ड",
+    "trustedDesc": "स्रोत-सचेत",
     "liveWeather": "लाइव मौसम",
     "weatherDesc": "रियल-टाइम अपडेट",
     "accessible": "सुलभ यात्रा",
     "accessibleDesc": "सभी के लिए अनुकूल",
     "secureLabel": "सुरक्षित",
-    "secureDesc": "सरकार सत्यापित"
+    "secureDesc": "सुरक्षित पहुंच"
   },
   "trust": {
     "title": "स्रोत एवं सत्यापन",

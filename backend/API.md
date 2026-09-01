@@ -61,6 +61,7 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/attractions/:id/facts` | No | Get attraction fact provenance. |
 | GET | `/api/v1/attractions/:id/alternatives` | No | Suggest similar same-destination attractions. |
 | GET | `/api/v1/live/weather` | No | Current weather from Open-Meteo. |
+| GET | `/api/v1/live/forecast` | No | Daily forecast range from Open-Meteo. |
 | GET | `/api/v1/live/route` | No | Distance and duration from OpenRouteService. |
 | POST | `/api/v1/planner/generate` | Optional | Generate an itinerary; with `saveTrip: true` and bearer auth, also save the trip and itinerary. |
 | POST | `/api/v1/nlu/extract` | No | Extract trip preferences from free text with Gemini or keyword fallback. |
@@ -169,6 +170,14 @@ the original fallback data.
 `GET /api/v1/live/weather?lat=20.2961&lon=85.8245`
 
 `lat` must be `-90..90`; `lon` must be `-180..180`.
+Use this endpoint with browser geolocation coordinates for client-location
+real-time weather. The response includes current temperature, condition,
+humidity, wind speed, source, and timestamp when the upstream provider returns
+them.
+
+`GET /api/v1/live/forecast?lat=20.2961&lon=85.8245&startDate=2026-09-01&endDate=2026-09-04`
+
+Returns one daily forecast card per available date in the inclusive range.
 
 `GET /api/v1/live/route?startLat=20.2961&startLon=85.8245&endLat=20.27&endLon=85.84&profile=driving-car`
 

@@ -1,6 +1,8 @@
 import { apiClient } from '../client';
 import { Destination, Attraction } from '../../types/domain';
 
+let usingFallbackData = false;
+
 export const DEFAULT_DESTINATIONS: Destination[] = [
   {
     id: 'bhubaneswar-odisha',
@@ -540,23 +542,58 @@ export const knowledgeApi = {
     try {
       const response = await apiClient.get<{ data: Destination[] }>('/knowledge/destinations');
       if (response.data?.data && response.data.data.length > 0) {
+        usingFallbackData = false;
         return response.data.data;
       }
+      usingFallbackData = true;
       return DEFAULT_DESTINATIONS;
     } catch {
+      usingFallbackData = true;
       return DEFAULT_DESTINATIONS;
     }
   },
 
-  getAttractionsByDestination: async (destinationId: string): Promise<Attraction[]> => {
+  getDestination: async (destinationId: string): Promise<Destination & { _count?: { attractions: number } }> => {
     try {
-      const response = await apiClient.get<{ data: Attraction[] }>(`/knowledge/destinations/${destinationId}/attractions`);
+      const response = await apiClient.get<{ data: Destination & { _count?: { attractions: number } } }>(`/knowledge/destinations/${destinationId}`);
+      usingFallbackData = false;
+      return response.data.data;
+    } catch {
+      const fallback = DEFAULT_DESTINATIONS.find((d) => d.id === destinationId);
+      if (!fallback) throw new Error('Destination not found');
+      usingFallbackData = true;
+      return fallback;
+    }
+  },
+
+  getAttractionsByDestination: async (
+    destinationId: string,
+    filters: {
+      categories?: string;
+      accessibilityWheelchair?: boolean;
+      indoorOutdoor?: 'indoor' | 'outdoor' | 'mixed';
+      search?: string;
+    } = {},
+  ): Promise<Attraction[]> => {
+    try {
+      const response = await apiClient.get<{ data: Attraction[] }>(`/knowledge/destinations/${destinationId}/attractions`, {
+        params: {
+          ...filters,
+          accessibilityWheelchair:
+            filters.accessibilityWheelchair === undefined ? undefined : String(filters.accessibilityWheelchair),
+        },
+      });
       if (response.data?.data && response.data.data.length > 0) {
+        usingFallbackData = false;
         return response.data.data;
       }
+      usingFallbackData = true;
       return DEFAULT_ATTRACTIONS[destinationId] || [];
     } catch {
+      usingFallbackData = true;
       return DEFAULT_ATTRACTIONS[destinationId] || [];
     }
   },
+
+  isUsingFallbackData: () => usingFallbackData,
 };

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 const regions = [
   { label: 'North India',   count: '312+', color: '#f97316' },
@@ -71,8 +72,8 @@ export const RegionalMapWidget: React.FC = () => (
       ))}
     </div>
 
-    <button className="w-full py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all flex items-center justify-center gap-1">
+    <Link to="/explore" className="w-full py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all flex items-center justify-center gap-1">
       Explore All States <span>→</span>
-    </button>
+    </Link>
   </div>
 );

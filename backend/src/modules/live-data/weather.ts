@@ -7,6 +7,18 @@ export interface WeatherData {
   temperature_celsius: number;
   condition: string; // Simplified for MVP (clear, rain, clouds, etc)
   is_day: boolean;
+  humidity?: number;
+  windSpeed?: number;
+  source?: string;
+  verifiedAt?: string;
+}
+
+export interface WeatherForecastDay {
+  date: string;
+  maxTemp: number;
+  minTemp: number;
+  weatherCode: number;
+  condition: string;
 }
 
 export async function getLiveWeather(lat: number, lon: number): Promise<WeatherData> {
@@ -17,7 +29,7 @@ export async function getLiveWeather(lat: number, lon: number): Promise<WeatherD
 
   try {
     // Open-Meteo free API (no key required)
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,is_day,weather_code`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,is_day,weather_code,relative_humidity_2m,wind_speed_10m`;
     const response = await fetch(url);
     
     if (!response.ok) {
@@ -25,13 +37,24 @@ export async function getLiveWeather(lat: number, lon: number): Promise<WeatherD
     }
 
     const data = (await response.json()) as {
-      current: { temperature_2m: number; is_day: number; weather_code: number };
+      current: {
+        temperature_2m: number;
+        is_day: number;
+        weather_code: number;
+        relative_humidity_2m?: number;
+        wind_speed_10m?: number;
+        time?: string;
+      };
     };
     
     const weatherData: WeatherData = {
       temperature_celsius: data.current.temperature_2m,
       is_day: data.current.is_day === 1,
       condition: mapWeatherCode(data.current.weather_code),
+      humidity: data.current.relative_humidity_2m,
+      windSpeed: data.current.wind_speed_10m,
+      source: 'Open-Meteo',
+      verifiedAt: data.current.time || new Date().toISOString(),
     };
 
     cache.set(cacheKey, weatherData, WEATHER_CACHE_TTL);
@@ -39,6 +62,55 @@ export async function getLiveWeather(lat: number, lon: number): Promise<WeatherD
   } catch (error) {
     console.error('Weather API failed:', error);
     throw new AppError('Live weather data unavailable', 503, 'LIVE_DATA_UNAVAILABLE');
+  }
+}
+
+export async function getWeatherForecast(
+  lat: number,
+  lon: number,
+  startDate: string,
+  endDate: string
+): Promise<WeatherForecastDay[]> {
+  const cacheKey = `weather-forecast:${lat.toFixed(2)}:${lon.toFixed(2)}:${startDate}:${endDate}`;
+
+  const cached = cache.get<WeatherForecastDay[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Open-Meteo returned ${response.status}`);
+    }
+
+    const data = (await response.json()) as {
+      daily?: {
+        time?: string[];
+        temperature_2m_max?: number[];
+        temperature_2m_min?: number[];
+        weather_code?: number[];
+      };
+    };
+
+    const daily = data.daily;
+    if (!daily?.time) return [];
+
+    const forecast = daily.time
+      .map((date, index) => ({
+        date,
+        maxTemp: Math.round(daily.temperature_2m_max?.[index] ?? 0),
+        minTemp: Math.round(daily.temperature_2m_min?.[index] ?? 0),
+        weatherCode: daily.weather_code?.[index] ?? 0,
+        condition: mapWeatherCode(daily.weather_code?.[index] ?? 0),
+      }))
+      .filter((day) => day.date >= startDate && day.date <= endDate);
+
+    cache.set(cacheKey, forecast, WEATHER_CACHE_TTL);
+    return forecast;
+  } catch (error) {
+    console.error('Weather forecast API failed:', error);
+    throw new AppError('Weather forecast data unavailable', 503, 'LIVE_DATA_UNAVAILABLE');
   }
 }
 

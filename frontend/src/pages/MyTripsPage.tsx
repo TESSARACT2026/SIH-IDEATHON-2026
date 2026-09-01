@@ -10,7 +10,7 @@ import { AuthModal } from '../components/ui/AuthModal';
 const DRAFT_KEY = 'margdarshak_drafts';
 
 export const MyTripsPage: React.FC = () => {
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'completed' | 'all' | 'drafts'>('upcoming');
@@ -30,19 +30,19 @@ export const MyTripsPage: React.FC = () => {
 
   // Fetch trips only when authenticated
   const { data: trips = [], isLoading, error } = useQuery({
-    queryKey: ['trips', token],
-    queryFn: () => tripsApi.list(token!),
-    enabled: !!token,
+    queryKey: ['trips'],
+    queryFn: tripsApi.list,
+    enabled: !!user,
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => tripsApi.delete(id, token!),
+    mutationFn: (id: string) => tripsApi.delete(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['trips'] }),
   });
 
   const shareMutation = useMutation({
     mutationFn: ({ id, isPublic }: { id: string; isPublic: boolean }) =>
-      tripsApi.setPublic(id, isPublic, token!),
+      tripsApi.setPublic(id, isPublic),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['trips'] }),
   });
 

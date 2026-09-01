@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Droplets, Wind, Gauge, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { liveApi } from '../../api/services/liveApi';
 
 interface WeatherWidgetProps {
   temperature?: number;
@@ -45,7 +46,9 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
   const [currentWeatherCode, setCurrentWeatherCode] = useState<number>();
   const [currentLocation, setCurrentLocation] = useState(location);
   const [currentWind, setCurrentWind] = useState(windSpeed);
+  const [currentHumidity, setCurrentHumidity] = useState(humidity);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLiveWeather, setHasLiveWeather] = useState(false);
 
   useEffect(() => {
     if ('geolocation' in navigator) {
@@ -54,23 +57,17 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
         async (position) => {
           try {
             const { latitude, longitude } = position.coords;
-            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`);
-            const data = await res.json();
-            if (data.current_weather) {
-              const weatherCode = data.current_weather.weathercode;
-              setCurrentTemp(Math.round(data.current_weather.temperature));
-              setCurrentWind(Math.round(data.current_weather.windspeed));
-              setCurrentWeatherCode(weatherCode);
-              setCurrentCondition(getWeatherInfo(weatherCode, condition).label);
-            }
-
-            // Reverse Geocoding to get actual city name
-            const geoRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
-            const geoData = await geoRes.json();
-            const city = geoData.city || geoData.locality || 'Current Location';
-            setCurrentLocation(city);
+            const data = await liveApi.getLiveWeather(latitude, longitude);
+            setCurrentTemp(Math.round(data.temperature_celsius ?? data.temperature ?? temperature));
+            setCurrentWind(Math.round(data.windSpeed ?? windSpeed));
+            setCurrentHumidity(Math.round(data.humidity ?? humidity));
+            setCurrentWeatherCode(undefined);
+            setCurrentCondition(getWeatherInfo(undefined, data.condition || condition).label);
+            setCurrentLocation('Current Location');
+            setHasLiveWeather(true);
           } catch (e) {
             console.error("Failed to fetch weather", e);
+            setHasLiveWeather(false);
           } finally {
             setIsLoading(false);
           }
@@ -91,9 +88,10 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
       <div className="flex items-start justify-between mb-4 relative z-10">
         <div>
           <h3 className="text-sm font-bold text-gray-900 dark:text-white">{t('dashboard.weather', 'India Weather')}</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400">{t('dashboard.liveConditions', 'Live Conditions')}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {hasLiveWeather ? t('dashboard.liveConditions', 'Live Conditions') : 'Default conditions'}
+          </p>
         </div>
-        <button className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 text-lg leading-none">⋮</button>
       </div>
 
       {isLoading && (
@@ -123,7 +121,7 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
             <Droplets size={14} className="text-blue-400" />
             <span>{t('dashboard.humidity', 'Humidity')}</span>
           </div>
-          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{humidity}%</span>
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{currentHumidity}%</span>
         </div>
         <div className="flex items-center justify-between py-1.5 border-b border-gray-100 dark:border-gray-800">
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">

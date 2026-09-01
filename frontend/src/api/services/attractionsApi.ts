@@ -1,5 +1,5 @@
 import { apiClient } from '../client';
-import { FactProvenance } from '../../types/domain';
+import { Attraction, FactProvenance } from '../../types/domain';
 
 const DEFAULT_FACTS: Record<string, FactProvenance[]> = {
   'lingaraj-temple': [
@@ -98,6 +98,16 @@ const DEFAULT_FACTS: Record<string, FactProvenance[]> = {
   ],
 };
 
+function asDemoFacts(facts: FactProvenance[]): FactProvenance[] {
+  return facts.map((fact) => ({
+    ...fact,
+    source_name: `Demo fallback: ${fact.source_name}`,
+    source_type: 'AI_INFERENCE',
+    verification_status: 'UNVERIFIED',
+    confidence: Math.min(fact.confidence, 0.5),
+  }));
+}
+
 export const attractionsApi = {
   getAttractionFacts: async (attractionId: string): Promise<FactProvenance[]> => {
     try {
@@ -105,33 +115,38 @@ export const attractionsApi = {
       if (response.data?.data && response.data.data.length > 0) {
         return response.data.data;
       }
-      return DEFAULT_FACTS[attractionId] || [
+      return asDemoFacts(DEFAULT_FACTS[attractionId] || [
         {
           fact_id: `fact-${attractionId}-hours`,
           fact_key: 'opening_hours',
           fact_value: { open: '09:00', close: '18:00' },
-          source_name: 'State Tourism Board Ground Registry',
-          source_type: 'OFFICIAL_TOURISM',
-          verification_status: 'VERIFIED',
-          confidence: 0.94,
+          source_name: 'Demo fallback data',
+          source_type: 'AI_INFERENCE',
+          verification_status: 'UNVERIFIED',
+          confidence: 0.5,
           timestamp: new Date().toISOString(),
           last_checked: new Date().toISOString(),
         },
-      ];
+      ]);
     } catch {
-      return DEFAULT_FACTS[attractionId] || [
+      return asDemoFacts(DEFAULT_FACTS[attractionId] || [
         {
           fact_id: `fact-${attractionId}-hours`,
           fact_key: 'opening_hours',
           fact_value: { open: '09:00', close: '18:00' },
-          source_name: 'State Tourism Board Ground Registry',
-          source_type: 'OFFICIAL_TOURISM',
-          verification_status: 'VERIFIED',
-          confidence: 0.94,
+          source_name: 'Demo fallback data',
+          source_type: 'AI_INFERENCE',
+          verification_status: 'UNVERIFIED',
+          confidence: 0.5,
           timestamp: new Date().toISOString(),
           last_checked: new Date().toISOString(),
         },
-      ];
+      ]);
     }
+  },
+
+  getAlternatives: async (attractionId: string): Promise<Attraction[]> => {
+    const response = await apiClient.get<{ data: Attraction[] }>(`/attractions/${attractionId}/alternatives`);
+    return response.data.data;
   },
 };

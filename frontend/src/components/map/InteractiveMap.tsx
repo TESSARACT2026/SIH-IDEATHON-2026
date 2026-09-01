@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { ItineraryItem, Attraction } from '../../types/domain';
 import { TrustBadge } from '../trust/TrustBadge';
 import { MapPin, Navigation, Calendar, Eye } from 'lucide-react';
+import { liveApi } from '../../api/services/liveApi';
 
 // Custom Map Marker Icon Generator
 const createCustomIcon = (sequence?: number, isHighlighted?: boolean, dayNumber?: number) => {
@@ -130,6 +132,18 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       ? allAttractions.map((a) => [a.latitude, a.longitude])
       : [center];
 
+  const routeStart = itineraryCoordinates[0];
+  const routeEnd = itineraryCoordinates[itineraryCoordinates.length - 1];
+  const { data: route } = useQuery({
+    queryKey: ['route', routeStart?.[0], routeStart?.[1], routeEnd?.[0], routeEnd?.[1], currentActiveDay],
+    queryFn: () => liveApi.getRoute(routeStart![0], routeStart![1], routeEnd![0], routeEnd![1], 'driving-car'),
+    enabled: itineraryCoordinates.length > 1,
+    retry: false,
+  });
+
+  const routeCoordinates: [number, number][] =
+    route?.geometry?.coordinates?.map(([lon, lat]) => [lat, lon]) || itineraryCoordinates;
+
   const polylineColor = currentActiveDay === 1 ? '#0284c7' : currentActiveDay === 2 ? '#16a34a' : '#ea580c';
 
   return (
@@ -187,7 +201,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         {/* Polylines for active day route */}
         {itineraryCoordinates.length > 1 && (
           <Polyline
-            positions={itineraryCoordinates}
+            positions={routeCoordinates}
             color={polylineColor}
             weight={4}
             opacity={0.9}

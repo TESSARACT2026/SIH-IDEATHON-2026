@@ -1,36 +1,42 @@
 import React, { useEffect, useState } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
-import { apiClient } from '../api/client';
+import { servicesApi, ExchangeRates, Holiday, SafetyPulse } from '../api/services/servicesApi';
 import { BookOpen, DollarSign, Calendar, Heart, ShieldAlert, Award } from 'lucide-react';
-
-interface ExchangeRates {
-  inr: Record<string, number>;
-}
-
-interface Holiday {
-  date: string;
-  localName: string;
-  name: string;
-}
 
 export const TravelGuidePage: React.FC = () => {
   const [exchangeRates, setExchangeRates] = useState<ExchangeRates | null>(null);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [isLoadingHolidays, setIsLoadingHolidays] = useState(true);
+  const [holidayError, setHolidayError] = useState(false);
+  const [safetyPulse, setSafetyPulse] = useState<SafetyPulse | null>(null);
+  const [countryInfo, setCountryInfo] = useState<Record<string, any> | null>(null);
   const [inrAmount, setInrAmount] = useState<number>(100);
   const [selectedCurrency, setSelectedCurrency] = useState<string>('usd');
   const [conversionResult, setConversionResult] = useState<string>('');
 
   useEffect(() => {
     const fetchGuideData = async () => {
-      try {
-        const rateRes = await apiClient.get('/services/exchange-rates');
-        setExchangeRates(rateRes.data.data);
-        
-        const holidayRes = await apiClient.get('/services/holidays?countryCode=IN');
-        setHolidays((holidayRes.data.data || []).slice(0, 5));
-      } catch (err) {
-        console.error('Failed to load travel services data:', err);
+      const [rates, holidayData, safety, country] = await Promise.allSettled([
+        servicesApi.getExchangeRates(),
+        servicesApi.getHolidays('IN'),
+        servicesApi.getSafetyPulse(),
+        servicesApi.getCountryInfo('IN'),
+      ]);
+
+      if (rates.status === 'fulfilled') setExchangeRates(rates.value);
+      if (safety.status === 'fulfilled') setSafetyPulse(safety.value);
+      if (country.status === 'fulfilled') setCountryInfo(country.value);
+
+      if (holidayData.status === 'fulfilled') {
+        const today = new Date().toISOString().split('T')[0];
+        setHolidays((holidayData.value || []).filter((holiday) => holiday.date >= today).slice(0, 5));
+        setHolidayError(false);
+      } else {
+        console.error('Failed to load holidays:', holidayData.reason);
+        setHolidayError(true);
       }
+
+      setIsLoadingHolidays(false);
     };
     fetchGuideData();
   }, []);
@@ -105,7 +111,35 @@ export const TravelGuidePage: React.FC = () => {
                   <span><strong>Weather Prep:</strong> Carry sunscreen, a hat, and stay hydrated, especially during the summer months (April–July).</span>
                 </li>
               </ul>
+              {safetyPulse && (
+                <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-100">
+                  <p className="font-bold text-white">Live safety pulse: {safetyPulse.level || 'Moderate'}{safetyPulse.score !== undefined ? ` (${safetyPulse.score}/100)` : ''}</p>
+                  {safetyPulse.description && <p className="mt-1 text-red-100/80">{safetyPulse.description}</p>}
+                </div>
+              )}
             </div>
+
+            {countryInfo && (
+              <div className="bg-slate-800/30 border border-white/5 rounded-2xl p-6">
+                <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-4">
+                  <BookOpen size={18} className="text-sky-400" /> Country Essentials
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="rounded-xl bg-white/5 border border-white/5 p-3">
+                    <p className="text-slate-400">Capital</p>
+                    <p className="font-bold text-white">{countryInfo.capital?.[0] || 'New Delhi'}</p>
+                  </div>
+                  <div className="rounded-xl bg-white/5 border border-white/5 p-3">
+                    <p className="text-slate-400">Region</p>
+                    <p className="font-bold text-white">{countryInfo.region || 'Asia'}</p>
+                  </div>
+                  <div className="rounded-xl bg-white/5 border border-white/5 p-3">
+                    <p className="text-slate-400">Currency</p>
+                    <p className="font-bold text-white">{Object.keys(countryInfo.currencies || { INR: true })[0]}</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
           </div>
 
@@ -152,8 +186,12 @@ export const TravelGuidePage: React.FC = () => {
               <h3 className="font-bold text-white flex items-center gap-2 mb-4 text-sm uppercase tracking-wider text-slate-400">
                 <Calendar size={16} className="text-sky-400" /> Upcoming Holidays (India)
               </h3>
-              {holidays.length === 0 ? (
+              {isLoadingHolidays ? (
                 <p className="text-xs text-slate-400">Loading holidays...</p>
+              ) : holidayError ? (
+                <p className="text-xs text-slate-400">Holiday data is unavailable right now.</p>
+              ) : holidays.length === 0 ? (
+                <p className="text-xs text-slate-400">No upcoming holidays found.</p>
               ) : (
                 <div className="space-y-3">
                   {holidays.map((h, idx) => (

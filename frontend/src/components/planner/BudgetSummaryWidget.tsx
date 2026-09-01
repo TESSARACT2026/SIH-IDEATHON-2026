@@ -1,7 +1,9 @@
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { IndianRupee, Car, Ticket, ShieldCheck } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { ItineraryItem, TransportPreference } from '../../types/domain';
+import { budgetApi } from '../../api/services/budgetApi';
 
 interface BudgetSummaryWidgetProps {
   items: ItineraryItem[];
@@ -9,11 +11,19 @@ interface BudgetSummaryWidgetProps {
 }
 
 export const BudgetSummaryWidget: React.FC<BudgetSummaryWidgetProps> = ({ items, transportMode }) => {
+  const attractionIds = items.map((item) => item.entityId);
+  const { data: budget } = useQuery({
+    queryKey: ['budget-estimate', attractionIds],
+    queryFn: () => budgetApi.estimate(attractionIds),
+    enabled: attractionIds.length > 0,
+    retry: false,
+  });
+
   if (items.length === 0) return null;
 
   // Calculate estimated ticket fees based on facts
   let totalTicketEst = 0;
-  let verifiedTicketsCount = 0;
+  let recordedTicketsCount = 0;
 
   items.forEach((item) => {
     const priceFact = item.trustSummary.facts.find((f) => f.fact_key === 'ticket_price');
@@ -21,10 +31,10 @@ export const BudgetSummaryWidget: React.FC<BudgetSummaryWidgetProps> = ({ items,
       const val = priceFact.fact_value as any;
       if (typeof val.inr === 'number') {
         totalTicketEst += val.inr;
-        verifiedTicketsCount++;
+        recordedTicketsCount++;
       } else if (typeof val.adult === 'number') {
         totalTicketEst += val.adult;
-        verifiedTicketsCount++;
+        recordedTicketsCount++;
       }
     } else {
       // Default estimate for heritage monument if not recorded
@@ -42,7 +52,8 @@ export const BudgetSummaryWidget: React.FC<BudgetSummaryWidgetProps> = ({ items,
       : 80;
 
   const totalTransitEst = items.length * transitPerStop;
-  const grandTotal = totalTicketEst + totalTransitEst;
+  const backendTicketTotal = budget?.totalAmount;
+  const grandTotal = (backendTicketTotal ?? totalTicketEst) + totalTransitEst;
 
   return (
     <Card className="border-slate-200">
@@ -60,9 +71,9 @@ export const BudgetSummaryWidget: React.FC<BudgetSummaryWidgetProps> = ({ items,
               <Ticket className="h-3.5 w-3.5 text-orange-600" />
               <span>Attraction Tickets</span>
             </div>
-            <p className="text-sm font-bold text-slate-900">₹{totalTicketEst}</p>
+            <p className="text-sm font-bold text-slate-900">₹{backendTicketTotal ?? totalTicketEst}</p>
             <span className="text-[10px] text-slate-400">
-              {verifiedTicketsCount > 0 ? `${verifiedTicketsCount} verified rates` : 'Estimated entries'}
+              {budget ? `${budget.includedCount} backend priced rates` : recordedTicketsCount > 0 ? `${recordedTicketsCount} recorded rates` : 'Estimated entries'}
             </span>
           </div>
 

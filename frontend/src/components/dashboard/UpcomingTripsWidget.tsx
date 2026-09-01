@@ -10,12 +10,12 @@ interface UpcomingTripsProps {}
 
 export const UpcomingTripsWidget: React.FC<UpcomingTripsProps> = () => {
   const { t } = useTranslation();
-  const { user, token } = useAuth();
+  const { user } = useAuth();
 
   const { data: trips = [], isLoading } = useQuery({
-    queryKey: ['trips-upcoming', token],
-    queryFn: () => tripsApi.list(token!),
-    enabled: !!token,
+    queryKey: ['trips-upcoming'],
+    queryFn: tripsApi.list,
+    enabled: !!user,
   });
 
   // Filter only upcoming (not completed)

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
   MapPin,
@@ -10,9 +10,14 @@ import {
   ChevronRight,
   Filter,
   Search,
+  Heart,
 } from 'lucide-react';
 import { knowledgeApi } from '../api/services/knowledgeApi';
 import { attractionsApi } from '../api/services/attractionsApi';
+import { crowdApi } from '../api/services/crowdApi';
+import { guideApi } from '../api/services/guideApi';
+import { favoritesApi } from '../api/services/favoritesApi';
+import { useAuth } from '../lib/AuthContext';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { FactProvenanceDrawer } from '../components/trust/FactProvenanceDrawer';
@@ -21,6 +26,7 @@ import { Attraction, FactProvenance } from '../types/domain';
 
 export const AttractionExplorerPage: React.FC = () => {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [selectedDestinationId, setSelectedDestinationId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [wheelchairOnly, setWheelchairOnly] = useState(false);
@@ -52,6 +58,33 @@ export const AttractionExplorerPage: React.FC = () => {
     enabled: !!activeAttractionForAudit,
   });
 
+  const { data: crowd } = useQuery({
+    queryKey: ['crowd', activeAttractionForAudit?.id],
+    queryFn: () => crowdApi.getAttractionCrowd(activeAttractionForAudit!.id),
+    enabled: !!activeAttractionForAudit,
+  });
+
+  const { data: attractionGuide } = useQuery({
+    queryKey: ['attraction-guide', activeAttractionForAudit?.id],
+    queryFn: () => guideApi.getAttractionGuide(activeAttractionForAudit!.id),
+    enabled: !!activeAttractionForAudit,
+  });
+
+  const { data: alternatives = [] } = useQuery({
+    queryKey: ['alternatives', activeAttractionForAudit?.id],
+    queryFn: () => attractionsApi.getAlternatives(activeAttractionForAudit!.id),
+    enabled: !!activeAttractionForAudit,
+  });
+
+  const favoriteMutation = useMutation({
+    mutationFn: (attractionId: string) => favoritesApi.addFavorite(attractionId),
+  });
+
+  const crowdMutation = useMutation({
+    mutationFn: (currentCrowdLevel: 'LOW' | 'MODERATE' | 'HIGH' | 'SEVERE') =>
+      crowdApi.report({ attractionId: activeAttractionForAudit!.id, currentCrowdLevel }),
+  });
+
   const filteredAttractions = attractions.filter((a) => {
     const matchesSearch =
       a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -61,17 +94,18 @@ export const AttractionExplorerPage: React.FC = () => {
   });
 
   const currentDest = destinations.find((d) => d.id === selectedDestinationId);
+  const isDemoData = knowledgeApi.isUsingFallbackData();
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Explore Heritage & Attractions</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Browse verified tourist attractions with full accessibility audits and ground facts.
-          </p>
-        </div>
+	          <h1 className="text-2xl font-bold text-slate-900">Explore Heritage & Attractions</h1>
+	          <p className="text-sm text-slate-500 mt-1">
+	            Browse tourist attractions with accessibility details, provenance, and ground facts.
+	          </p>
+	        </div>
 
         {/* Destination Selector */}
         <div className="flex items-center gap-2">
@@ -91,15 +125,21 @@ export const AttractionExplorerPage: React.FC = () => {
       </div>
 
       {/* Live Destination Weather */}
-      {currentDest && (
-        <WeatherWidget
+	      {currentDest && (
+	        <WeatherWidget
           lat={currentDest.latitude}
           lon={currentDest.longitude}
           cityName={`${currentDest.name}, ${currentDest.region || currentDest.country}`}
-        />
+	        />
+	      )}
+
+      {isDemoData && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          Demo fallback attraction records are shown because the backend knowledge layer returned no live data.
+        </div>
       )}
 
-      {/* Filter Bar */}
+	      {/* Filter Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs">
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
@@ -200,18 +240,31 @@ export const AttractionExplorerPage: React.FC = () => {
 
                 {/* Action: View Provenance Audit */}
                 <div className="pt-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full text-xs font-semibold h-9 rounded-xl justify-between border-slate-200 hover:border-orange-500 hover:text-orange-600"
-                    onClick={() => setActiveAttractionForAudit(attraction)}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                      <span>Audit Verified Facts</span>
-                    </div>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 text-xs font-semibold h-9 rounded-xl justify-between border-slate-200 hover:border-orange-500 hover:text-orange-600"
+                      onClick={() => setActiveAttractionForAudit(attraction)}
+                    >
+	                      <div className="flex items-center gap-1.5">
+	                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
+	                        <span>Audit Facts</span>
+	                      </div>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    {user && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-xl border-slate-200"
+                        onClick={() => favoriteMutation.mutate(attraction.id)}
+                        title="Save favorite"
+                      >
+                        <Heart className="h-4 w-4 text-rose-500" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -221,12 +274,56 @@ export const AttractionExplorerPage: React.FC = () => {
 
       {/* Fact Audit Sheet */}
       {activeAttractionForAudit && (
-        <FactProvenanceDrawer
-          isOpen={!!activeAttractionForAudit}
-          onClose={() => setActiveAttractionForAudit(null)}
-          attractionName={activeAttractionForAudit.name}
-          facts={attractionFacts}
-        />
+        <>
+          <FactProvenanceDrawer
+            isOpen={!!activeAttractionForAudit}
+            onClose={() => setActiveAttractionForAudit(null)}
+            attractionName={activeAttractionForAudit.name}
+            facts={attractionFacts}
+          />
+          <div className="fixed right-4 bottom-4 z-40 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl space-y-3">
+	            <div>
+	              <p className="text-xs font-bold uppercase text-slate-400">Crowd Reports</p>
+	              <p className="text-sm font-bold text-slate-900">
+                {crowd?.latest?.currentCrowdLevel || attractionGuide?.latestCrowd?.currentCrowdLevel || 'No report yet'}
+              </p>
+            </div>
+            {user && (
+              <div className="grid grid-cols-4 gap-1">
+                {(['LOW', 'MODERATE', 'HIGH', 'SEVERE'] as const).map((level) => (
+                  <button
+                    key={level}
+                    onClick={() => crowdMutation.mutate(level)}
+                    className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700 hover:bg-orange-100"
+                  >
+                    {level}
+                  </button>
+                ))}
+              </div>
+            )}
+            {attractionGuide?.trustWarnings?.length ? (
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-2">
+                {attractionGuide.trustWarnings[0]}
+              </div>
+            ) : null}
+            {alternatives.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase text-slate-400 mb-2">Alternatives</p>
+                <div className="space-y-1">
+                  {alternatives.slice(0, 3).map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveAttractionForAudit(item)}
+                      className="block w-full text-left text-xs rounded-lg bg-slate-50 px-2 py-1.5 text-slate-700 hover:bg-slate-100"
+                    >
+                      {item.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
