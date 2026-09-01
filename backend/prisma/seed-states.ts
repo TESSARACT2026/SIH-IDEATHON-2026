@@ -26,7 +26,7 @@ const statesData = [
   { region: 'Maharashtra', destination: 'Mumbai', attraction: 'Gateway of India', lat: 18.9220, lng: 72.8347 },
   { region: 'Manipur', destination: 'Imphal', attraction: 'Loktak Lake', lat: 24.8170, lng: 93.9368 },
   { region: 'Meghalaya', destination: 'Shillong', attraction: 'Umiam Lake', lat: 25.5788, lng: 91.8933 },
-  { region: 'Mizoram', destination: 'Aizawl', attraction: 'Durtlang Hills', lat: 23.7271, lng: 92.7176 },
+  { region: 'Mizoram', destination: 'Aizwal', attraction: 'Durtlang Hills', lat: 23.7271, lng: 92.7176 },
   { region: 'Nagaland', destination: 'Kohima', attraction: 'Kohima War Cemetery', lat: 25.6701, lng: 94.1077 },
   { region: 'Odisha', destination: 'Bhubaneswar', attraction: 'Lingaraj Temple', lat: 20.2961, lng: 85.8245 },
   { region: 'Punjab', destination: 'Amritsar', attraction: 'Golden Temple', lat: 31.6200, lng: 74.8765 },

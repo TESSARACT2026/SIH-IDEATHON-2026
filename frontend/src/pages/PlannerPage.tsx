@@ -47,40 +47,40 @@ export const PlannerPage: React.FC = () => {
   const [selectedItineraryItem, setSelectedItineraryItem] = useState<ItineraryItem | null>(null);
   const [activeDay, setActiveDay] = useState<number | 'ALL'>(1);
 
-  // Set default or passed destination
+  // Apply routed destination/preferences without auto-selecting a default.
   useEffect(() => {
-    if (destinations.length > 0) {
-      const matchId =
-        locationState?.destinationId ||
-        (plannerInput.destinationId ? plannerInput.destinationId : destinations[0].id);
+    if (!locationState?.destinationId && !locationState?.extracted) return;
 
-      let updatedPreferences = { ...plannerInput.preferences };
-      if (locationState?.extracted) {
-        updatedPreferences = {
-          ...updatedPreferences,
-          pace: locationState.extracted.pace || updatedPreferences.pace,
-          accessibilityWheelchair:
-            locationState.extracted.accessibilityWheelchair ??
-            updatedPreferences.accessibilityWheelchair,
-          interests: locationState.extracted.interests || updatedPreferences.interests,
-          transportPreference:
-            locationState.extracted.transportPreference || updatedPreferences.transportPreference,
-        };
-      }
-
-      setPlannerInput((prev) => ({
-        ...prev,
-        destinationId: matchId,
-        preferences: updatedPreferences,
-      }));
-    }
-  }, [destinations, locationState]);
+    setPlannerInput((prev) => ({
+      ...prev,
+      destinationId: locationState?.destinationId || prev.destinationId,
+      preferences: locationState?.extracted
+        ? {
+            ...prev.preferences,
+            pace: locationState.extracted.pace || prev.preferences.pace,
+            accessibilityWheelchair:
+              locationState.extracted.accessibilityWheelchair ??
+              prev.preferences.accessibilityWheelchair,
+            interests: locationState.extracted.interests || prev.preferences.interests,
+            transportPreference:
+              locationState.extracted.transportPreference || prev.preferences.transportPreference,
+          }
+        : prev.preferences,
+    }));
+  }, [locationState]);
 
   // 3. Fetch attractions for map background
   const { data: currentAttractions = [] } = useQuery({
-    queryKey: ['attractions', plannerInput.destinationId],
-    queryFn: () => knowledgeApi.getAttractionsByDestination(plannerInput.destinationId),
-    enabled: !!plannerInput.destinationId,
+    queryKey: ['attractions', plannerInput.destinationId, destinations.map((item) => item.id).join(',')],
+    queryFn: async () => {
+      if (plannerInput.destinationId) return knowledgeApi.getAttractionsByDestination(plannerInput.destinationId);
+
+      const groups = await Promise.all(
+        destinations.map((destination) => knowledgeApi.getAttractionsByDestination(destination.id))
+      );
+      return groups.flat();
+    },
+    enabled: destinations.length > 0,
   });
 
   // 4. Generate Itinerary Mutation

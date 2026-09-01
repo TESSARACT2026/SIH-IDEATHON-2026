@@ -12,8 +12,6 @@ interface Destination {
   rating: number;
   reviews: string;
   image: string;
-  emoji: string;
-  emojiBg: string;
 }
 
 const defaultDestinations: Destination[] = [
@@ -23,8 +21,6 @@ const defaultDestinations: Destination[] = [
     state: 'Himachal Pradesh',
     rating: 4.8,
     reviews: '1.2K',
-    emoji: '🏔️',
-    emojiBg: 'bg-teal-400',
     image: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=400&h=300&fit=crop&auto=format',
   },
   {
@@ -33,8 +29,6 @@ const defaultDestinations: Destination[] = [
     state: 'Rajasthan',
     rating: 4.7,
     reviews: '2.1K',
-    emoji: '🏰',
-    emojiBg: 'bg-orange-400',
     image: 'https://images.unsplash.com/photo-1477587458883-47145ed94245?w=400&h=300&fit=crop&auto=format',
   },
   {
@@ -43,8 +37,6 @@ const defaultDestinations: Destination[] = [
     state: 'Uttar Pradesh',
     rating: 4.9,
     reviews: '3.4K',
-    emoji: '🕉️',
-    emojiBg: 'bg-purple-400',
     image: 'https://images.unsplash.com/photo-1561361058-c24cecae35ca?w=400&h=300&fit=crop&auto=format',
   },
   {
@@ -53,8 +45,6 @@ const defaultDestinations: Destination[] = [
     state: 'Kerala',
     rating: 4.8,
     reviews: '1.6K',
-    emoji: '🌴',
-    emojiBg: 'bg-cyan-400',
     image: 'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=400&h=300&fit=crop&auto=format',
   },
   {
@@ -63,8 +53,6 @@ const defaultDestinations: Destination[] = [
     state: 'Goa',
     rating: 4.6,
     reviews: '2.8K',
-    emoji: '🏖️',
-    emojiBg: 'bg-yellow-400',
     image: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=400&h=300&fit=crop&auto=format',
   },
   {
@@ -73,8 +61,6 @@ const defaultDestinations: Destination[] = [
     state: 'Uttar Pradesh',
     rating: 4.8,
     reviews: '3.1K',
-    emoji: '🕌',
-    emojiBg: 'bg-rose-400',
     image: 'https://images.unsplash.com/photo-1548013146-72479768bada?w=400&h=300&fit=crop&auto=format',
   },
   {
@@ -83,8 +69,6 @@ const defaultDestinations: Destination[] = [
     state: 'West Bengal',
     rating: 4.7,
     reviews: '1.9K',
-    emoji: '🚂',
-    emojiBg: 'bg-green-400',
     image: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=400&h=300&fit=crop&auto=format',
   },
   {
@@ -93,154 +77,124 @@ const defaultDestinations: Destination[] = [
     state: 'Karnataka',
     rating: 4.6,
     reviews: '2.2K',
-    emoji: '🐘',
-    emojiBg: 'bg-amber-400',
     image: 'https://images.unsplash.com/photo-1533105079780-92b9be482077?w=400&h=300&fit=crop&auto=format',
   },
 ];
 
 // Comprehensive destination image map keyed by destination name (lowercase)
-const DESTINATION_IMAGES: Record<string, { image: string; emoji: string; emojiBg: string }> = {
-  'bhubaneswar': { emoji: '🏛️', emojiBg: 'bg-orange-400', image: 'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=400&h=300&fit=crop&auto=format' },
-  'puri': { emoji: '🌊', emojiBg: 'bg-cyan-400', image: 'https://images.unsplash.com/photo-1626714258765-14e8e97e6af2?w=400&h=300&fit=crop&auto=format' },
-  'konark': { emoji: '☀️', emojiBg: 'bg-yellow-400', image: 'https://images.unsplash.com/photo-1590050752117-238cb0fb12b1?w=400&h=300&fit=crop&auto=format' },
-  'jaipur': { emoji: '🏰', emojiBg: 'bg-orange-400', image: 'https://images.unsplash.com/photo-1477587458883-47145ed94245?w=400&h=300&fit=crop&auto=format' },
-  'varanasi': { emoji: '🕉️', emojiBg: 'bg-purple-400', image: 'https://images.unsplash.com/photo-1561361058-c24cecae35ca?w=400&h=300&fit=crop&auto=format' },
-  'agra': { emoji: '🕌', emojiBg: 'bg-rose-400', image: 'https://images.unsplash.com/photo-1548013146-72479768bada?w=400&h=300&fit=crop&auto=format' },
-  'goa': { emoji: '🏖️', emojiBg: 'bg-yellow-400', image: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=400&h=300&fit=crop&auto=format' },
-  'kerala': { emoji: '🌴', emojiBg: 'bg-cyan-400', image: 'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=400&h=300&fit=crop&auto=format' },
-  'munnar': { emoji: '🌿', emojiBg: 'bg-green-400', image: 'https://images.unsplash.com/photo-1605649487212-47bdab064df7?w=400&h=300&fit=crop&auto=format' },
-  'manali': { emoji: '🏔️', emojiBg: 'bg-teal-400', image: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=400&h=300&fit=crop&auto=format' },
-  'darjeeling': { emoji: '🚂', emojiBg: 'bg-green-400', image: 'https://images.unsplash.com/photo-1544639587-bdc84e6dc668?w=400&h=300&fit=crop&auto=format' },
-  'mysore': { emoji: '🐘', emojiBg: 'bg-amber-400', image: 'https://images.unsplash.com/photo-1633789242441-11dd85ea9670?w=400&h=300&fit=crop&auto=format' },
+const DESTINATION_IMAGES: Record<string, { image: string }> = {
+  'bhubaneswar': { image: 'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=400&h=300&fit=crop&auto=format' },
+  'puri': { image: 'https://images.unsplash.com/photo-1626714258765-14e8e97e6af2?w=400&h=300&fit=crop&auto=format' },
+  'konark': { image: 'https://images.unsplash.com/photo-1590050752117-238cb0fb12b1?w=400&h=300&fit=crop&auto=format' },
+  'jaipur': { image: 'https://images.unsplash.com/photo-1477587458883-47145ed94245?w=400&h=300&fit=crop&auto=format' },
+  'varanasi': { image: 'https://images.unsplash.com/photo-1561361058-c24cecae35ca?w=400&h=300&fit=crop&auto=format' },
+  'agra': { image: 'https://images.unsplash.com/photo-1548013146-72479768bada?w=400&h=300&fit=crop&auto=format' },
+  'goa': { image: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=400&h=300&fit=crop&auto=format' },
+  'kerala': { image: 'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=400&h=300&fit=crop&auto=format' },
+  'munnar': { image: 'https://images.unsplash.com/photo-1605649487212-47bdab064df7?w=400&h=300&fit=crop&auto=format' },
+  'manali': { image: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=400&h=300&fit=crop&auto=format' },
+  'darjeeling': { image: 'https://images.unsplash.com/photo-1544639587-bdc84e6dc668?w=400&h=300&fit=crop&auto=format' },
+  'mysore': { image: 'https://images.unsplash.com/photo-1633789242441-11dd85ea9670?w=400&h=300&fit=crop&auto=format' },
   // All Indian States
-  'visakhapatnam': { emoji: '⛵', emojiBg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1591297669022-a0609afef87a?w=400&h=300&fit=crop&auto=format' },
-  'tawang': { emoji: '🏔️', emojiBg: 'bg-indigo-400', image: 'https://images.unsplash.com/photo-1607462109225-6b64ae2dd3cb?w=400&h=300&fit=crop&auto=format' },
-  'guwahati': { emoji: '🛕', emojiBg: 'bg-orange-400', image: 'https://images.unsplash.com/photo-1680782316083-4c7c09de7591?w=400&h=300&fit=crop&auto=format' },
-  'bodh gaya': { emoji: '☸️', emojiBg: 'bg-amber-400', image: 'https://images.unsplash.com/photo-1626005606720-61bab8a4d6fe?w=400&h=300&fit=crop&auto=format' },
-  'raipur': { emoji: '🌾', emojiBg: 'bg-lime-400', image: 'https://images.unsplash.com/photo-1662473219534-72bab1ef7fa4?w=400&h=300&fit=crop&auto=format' },
-  'ahmedabad': { emoji: '🏛️', emojiBg: 'bg-yellow-400', image: 'https://images.unsplash.com/photo-1590156546069-83ce63c75b49?w=400&h=300&fit=crop&auto=format' },
-  'gurugram': { emoji: '🌆', emojiBg: 'bg-slate-400', image: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?w=400&h=300&fit=crop&auto=format' },
-  'ranchi': { emoji: '💧', emojiBg: 'bg-sky-400', image: 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=400&h=300&fit=crop&auto=format' },
-  'bengaluru': { emoji: '🌸', emojiBg: 'bg-pink-400', image: 'https://images.unsplash.com/photo-1596176530529-78163a4f7af2?w=400&h=300&fit=crop&auto=format' },
-  'bhopal': { emoji: '🕌', emojiBg: 'bg-teal-400', image: 'https://images.unsplash.com/photo-1583147610148-5efec2a94dc5?w=400&h=300&fit=crop&auto=format' },
-  'mumbai': { emoji: '🌉', emojiBg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1566552881560-0be862a7c445?w=400&h=300&fit=crop&auto=format' },
-  'imphal': { emoji: '🏞️', emojiBg: 'bg-green-400', image: 'https://images.unsplash.com/photo-1623501952637-0c5efb1e4e06?w=400&h=300&fit=crop&auto=format' },
-  'shillong': { emoji: '⛰️', emojiBg: 'bg-emerald-400', image: 'https://images.unsplash.com/photo-1617195737994-7fd4d6a62cd7?w=400&h=300&fit=crop&auto=format' },
-  'aizawl': { emoji: '🌄', emojiBg: 'bg-violet-400', image: 'https://images.unsplash.com/photo-1633436373892-bdfaaae38dba?w=400&h=300&fit=crop&auto=format' },
-  'kohima': { emoji: '🌿', emojiBg: 'bg-green-400', image: 'https://images.unsplash.com/photo-1680782316083-4c7c09de7591?w=400&h=300&fit=crop&auto=format' },
-  'amritsar': { emoji: '✨', emojiBg: 'bg-yellow-400', image: 'https://images.unsplash.com/photo-1514222134-b57cbb8ce073?w=400&h=300&fit=crop&auto=format' },
-  'gangtok': { emoji: '🏔️', emojiBg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1586016413664-864c0dd76f53?w=400&h=300&fit=crop&auto=format' },
-  'chennai': { emoji: '🌊', emojiBg: 'bg-cyan-400', image: 'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=400&h=300&fit=crop&auto=format' },
-  'hyderabad': { emoji: '🕌', emojiBg: 'bg-rose-400', image: 'https://images.unsplash.com/photo-1563448927693-6e71c6a1d4a4?w=400&h=300&fit=crop&auto=format' },
-  'agartala': { emoji: '🏛️', emojiBg: 'bg-amber-400', image: 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?w=400&h=300&fit=crop&auto=format' },
-  'dehradun': { emoji: '🌲', emojiBg: 'bg-green-400', image: 'https://images.unsplash.com/photo-1606067048200-f81cf6c35dc5?w=400&h=300&fit=crop&auto=format' },
-  'kolkata': { emoji: '🌉', emojiBg: 'bg-indigo-400', image: 'https://images.unsplash.com/photo-1558431382-27e303142255?w=400&h=300&fit=crop&auto=format' },
-  'port blair': { emoji: '🏝️', emojiBg: 'bg-teal-400', image: 'https://images.unsplash.com/photo-1586016413664-864c0dd76f53?w=400&h=300&fit=crop&auto=format' },
-  'chandigarh': { emoji: '🌳', emojiBg: 'bg-green-400', image: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=400&h=300&fit=crop&auto=format' },
-  'daman': { emoji: '🏖️', emojiBg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=400&h=300&fit=crop&auto=format' },
-  'new delhi': { emoji: '🏛️', emojiBg: 'bg-orange-400', image: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?w=400&h=300&fit=crop&auto=format' },
-  'delhi': { emoji: '🏛️', emojiBg: 'bg-orange-400', image: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?w=400&h=300&fit=crop&auto=format' },
-  'srinagar': { emoji: '🛶', emojiBg: 'bg-blue-400', image: 'https://images.unsplash.com/photo-1573408310015-a5f6b9c5b1eb?w=400&h=300&fit=crop&auto=format' },
-  'leh': { emoji: '🏔️', emojiBg: 'bg-slate-400', image: 'https://images.unsplash.com/photo-1598091383021-15ddea10925d?w=400&h=300&fit=crop&auto=format' },
-  'kavaratti': { emoji: '🏝️', emojiBg: 'bg-cyan-400', image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400&h=300&fit=crop&auto=format' },
-  'pondicherry': { emoji: '⛪', emojiBg: 'bg-pink-400', image: 'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=400&h=300&fit=crop&auto=format' },
+  'visakhapatnam': { image: 'https://images.unsplash.com/photo-1591297669022-a0609afef87a?w=400&h=300&fit=crop&auto=format' },
+  'tawang': { image: 'https://images.unsplash.com/photo-1607462109225-6b64ae2dd3cb?w=400&h=300&fit=crop&auto=format' },
+  'guwahati': { image: 'https://images.unsplash.com/photo-1680782316083-4c7c09de7591?w=400&h=300&fit=crop&auto=format' },
+  'bodh gaya': { image: 'https://images.unsplash.com/photo-1626005606720-61bab8a4d6fe?w=400&h=300&fit=crop&auto=format' },
+  'raipur': { image: 'https://images.unsplash.com/photo-1662473219534-72bab1ef7fa4?w=400&h=300&fit=crop&auto=format' },
+  'ahmedabad': { image: 'https://images.unsplash.com/photo-1590156546069-83ce63c75b49?w=400&h=300&fit=crop&auto=format' },
+  'gurugram': { image: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?w=400&h=300&fit=crop&auto=format' },
+  'ranchi': { image: 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=400&h=300&fit=crop&auto=format' },
+  'bengaluru': { image: 'https://images.unsplash.com/photo-1596176530529-78163a4f7af2?w=400&h=300&fit=crop&auto=format' },
+  'bhopal': { image: 'https://images.unsplash.com/photo-1583147610148-5efec2a94dc5?w=400&h=300&fit=crop&auto=format' },
+  'mumbai': { image: 'https://images.unsplash.com/photo-1566552881560-0be862a7c445?w=400&h=300&fit=crop&auto=format' },
+  'imphal': { image: 'https://images.unsplash.com/photo-1623501952637-0c5efb1e4e06?w=400&h=300&fit=crop&auto=format' },
+  'shillong': { image: 'https://images.unsplash.com/photo-1617195737994-7fd4d6a62cd7?w=400&h=300&fit=crop&auto=format' },
+  'aizwal': { image: 'https://images.unsplash.com/photo-1633436373892-bdfaaae38dba?w=400&h=300&fit=crop&auto=format' },
+  'kohima': { image: 'https://images.unsplash.com/photo-1680782316083-4c7c09de7591?w=400&h=300&fit=crop&auto=format' },
+  'amritsar': { image: 'https://images.unsplash.com/photo-1514222134-b57cbb8ce073?w=400&h=300&fit=crop&auto=format' },
+  'gangtok': { image: 'https://images.unsplash.com/photo-1586016413664-864c0dd76f53?w=400&h=300&fit=crop&auto=format' },
+  'chennai': { image: 'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=400&h=300&fit=crop&auto=format' },
+  'hyderabad': { image: 'https://images.unsplash.com/photo-1563448927693-6e71c6a1d4a4?w=400&h=300&fit=crop&auto=format' },
+  'agartala': { image: 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?w=400&h=300&fit=crop&auto=format' },
+  'dehradun': { image: 'https://images.unsplash.com/photo-1606067048200-f81cf6c35dc5?w=400&h=300&fit=crop&auto=format' },
+  'kolkata': { image: 'https://images.unsplash.com/photo-1558431382-27e303142255?w=400&h=300&fit=crop&auto=format' },
+  'port blair': { image: 'https://images.unsplash.com/photo-1586016413664-864c0dd76f53?w=400&h=300&fit=crop&auto=format' },
+  'chandigarh': { image: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=400&h=300&fit=crop&auto=format' },
+  'daman': { image: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=400&h=300&fit=crop&auto=format' },
+  'new delhi': { image: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?w=400&h=300&fit=crop&auto=format' },
+  'delhi': { image: 'https://images.unsplash.com/photo-1587474260584-136574528ed5?w=400&h=300&fit=crop&auto=format' },
+  'srinagar': { image: 'https://images.unsplash.com/photo-1573408310015-a5f6b9c5b1eb?w=400&h=300&fit=crop&auto=format' },
+  'leh': { image: 'https://images.unsplash.com/photo-1598091383021-15ddea10925d?w=400&h=300&fit=crop&auto=format' },
+  'kavaratti': { image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=400&h=300&fit=crop&auto=format' },
+  'pondicherry': { image: 'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?w=400&h=300&fit=crop&auto=format' },
 };
 
 function getImageForDestination(name: string, index: number) {
   const key = name.toLowerCase();
   return DESTINATION_IMAGES[key]
     || Object.entries(DESTINATION_IMAGES).find(([k]) => key.includes(k) || k.includes(key))?.[1]
-    || { emoji: '🗺️', emojiBg: 'bg-gray-400', image: `https://source.unsplash.com/400x300/?${encodeURIComponent(name)},india,tourism` };
+    || { image: `https://source.unsplash.com/400x300/?${encodeURIComponent(name)},india,tourism` };
 }
 
-const backendVisuals: Array<Pick<Destination, 'name' | 'rating' | 'reviews' | 'emoji' | 'emojiBg' | 'image'>> = [
+const backendVisuals: Array<Pick<Destination, 'name' | 'rating' | 'reviews' | 'image'>> = [
   {
     name: 'Bhubaneswar',
     rating: 4.8,
     reviews: 'Backend',
-    emoji: '🏛️',
-    emojiBg: 'bg-orange-400',
     image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Lingaraj_Temple_%2C_Bhubaneswar.jpg/960px-Lingaraj_Temple_%2C_Bhubaneswar.jpg',
   },
   {
     name: 'Puri',
     rating: 4.7,
     reviews: 'Backend',
-    emoji: '🌊',
-    emojiBg: 'bg-cyan-400',
     image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Shri_Jagannath_temple.jpg/960px-Shri_Jagannath_temple.jpg',
   },
   {
     name: 'Konark',
     rating: 4.9,
     reviews: 'Backend',
-    emoji: '☀️',
-    emojiBg: 'bg-yellow-400',
     image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Konarka_Temple.jpg/960px-Konarka_Temple.jpg',
-  },
-  {
-    name: 'Jaipur',
-    rating: 4.7,
-    reviews: 'Backend',
-    emoji: '🏰',
-    emojiBg: 'bg-orange-400',
-    image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/East_facade_Hawa_Mahal_Jaipur_from_ground_level_%28July_2022%29_-_img_01.jpg/960px-East_facade_Hawa_Mahal_Jaipur_from_ground_level_%28July_2022%29_-_img_01.jpg',
   },
   {
     name: 'Varanasi',
     rating: 4.9,
     reviews: 'Backend',
-    emoji: '🕉️',
-    emojiBg: 'bg-purple-400',
     image: 'https://images.unsplash.com/photo-1561361058-c24cecae35ca?w=400&h=300&fit=crop&auto=format',
   },
   {
     name: 'Agra',
     rating: 4.8,
     reviews: 'Backend',
-    emoji: '🕌',
-    emojiBg: 'bg-rose-400',
     image: 'https://images.unsplash.com/photo-1548013146-72479768bada?w=400&h=300&fit=crop&auto=format',
   },
   {
     name: 'Goa',
     rating: 4.6,
     reviews: 'Backend',
-    emoji: '🏖️',
-    emojiBg: 'bg-yellow-400',
     image: 'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=400&h=300&fit=crop&auto=format',
   },
   {
     name: 'Kerala',
     rating: 4.8,
     reviews: 'Backend',
-    emoji: '🌴',
-    emojiBg: 'bg-cyan-400',
     image: 'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?w=400&h=300&fit=crop&auto=format',
   },
   {
     name: 'Manali',
     rating: 4.8,
     reviews: 'Demo',
-    emoji: '🏔️',
-    emojiBg: 'bg-teal-400',
     image: 'https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=400&h=300&fit=crop&auto=format',
   },
   {
     name: 'Darjeeling',
     rating: 4.7,
     reviews: 'Demo',
-    emoji: '🚂',
-    emojiBg: 'bg-green-400',
     image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/DarjeelingTrainFruitshop_%282%29.jpg/960px-DarjeelingTrainFruitshop_%282%29.jpg',
   },
   {
     name: 'Mysore',
     rating: 4.6,
     reviews: 'Demo',
-    emoji: '🐘',
-    emojiBg: 'bg-amber-400',
     image: 'https://images.unsplash.com/photo-1533105079780-92b9be482077?w=400&h=300&fit=crop&auto=format',
   },
 ];
@@ -249,8 +203,6 @@ export function getDestinationVisual(name: string, index: number) {
   const visual = getImageForDestination(name, index);
   return {
     image: visual.image,
-    emoji: visual.emoji,
-    emojiBg: visual.emojiBg,
     rating: 4.7,
     reviews: 'Live',
     name,
@@ -280,8 +232,6 @@ export const PopularDestinations: React.FC<PopularDestinationsProps> = ({
           state: destination.region || destination.country,
           rating: visual.rating,
           reviews: knowledgeApi.isUsingFallbackData() ? 'Demo' : visual.reviews,
-          emoji: visual.emoji,
-          emojiBg: visual.emojiBg,
           image: visual.image,
         };
       })
@@ -299,7 +249,7 @@ export const PopularDestinations: React.FC<PopularDestinationsProps> = ({
         </div>
         <button
           type="button"
-          onClick={() => navigate('/explore')}
+          onClick={() => navigate('/destinations')}
           className="flex items-center gap-1 text-green-600 hover:text-green-700 font-semibold text-sm transition-colors"
         >
           <span>{t('dashboard.viewAll', 'View All')}</span>

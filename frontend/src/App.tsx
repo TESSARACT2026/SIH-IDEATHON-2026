@@ -22,6 +22,7 @@ import { SharedTripPage } from './pages/SharedTripPage';
 import { TripDetailsPage } from './pages/TripDetailsPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { DestinationPage } from './pages/DestinationPage';
+import { DestinationsPage } from './pages/DestinationsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 const queryClient = new QueryClient({
@@ -119,6 +120,7 @@ function App() {
                 <Route path="/trips/:id" element={<ProtectedRoute><TripDetailsPage /></ProtectedRoute>} />
                 <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
                 <Route path="/destination/:id" element={<DestinationPage />} />
+                <Route path="/destinations" element={<DestinationsPage />} />
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
