@@ -17,7 +17,8 @@ export type VerificationStatus =
   | 'INFERRED'
   | 'UNVERIFIED'
   | 'OUTDATED'
-  | 'DISPUTED';
+  | 'DISPUTED'
+  | 'NEEDS_REVIEW';
 
 interface TrustBadgeProps {
   status: VerificationStatus;
@@ -35,6 +36,7 @@ export function TrustBadge({ status }: TrustBadgeProps) {
       case 'UNVERIFIED': return 'trust-badge--unverified';
       case 'OUTDATED': return 'trust-badge--outdated';
       case 'DISPUTED': return 'trust-badge--disputed';
+      case 'NEEDS_REVIEW': return 'trust-badge--needs-review';
       default: return '';
     }
   };
@@ -49,6 +51,7 @@ export function TrustBadge({ status }: TrustBadgeProps) {
       case 'UNVERIFIED': return <XCircle {...iconProps} />;
       case 'OUTDATED': return <Clock {...iconProps} />;
       case 'DISPUTED': return <AlertTriangle {...iconProps} />;
+      case 'NEEDS_REVIEW': return <Clock {...iconProps} />;
       default: return <HelpCircle {...iconProps} />;
     }
   };

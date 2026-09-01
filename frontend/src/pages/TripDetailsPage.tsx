@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { tripsApi } from '../api/services/tripsApi';
 import { useAuth } from '../lib/AuthContext';
@@ -8,9 +9,14 @@ import {
   MapPin, Calendar, Shield, AlertTriangle, Loader2, CheckCircle2,
   Wallet, Map as MapIcon, List, Info, Download
 } from 'lucide-react';
+import { TripHealthScore } from '../components/scoring/TripHealthScore';
+import { TripTrustScore } from '../components/scoring/TripTrustScore';
+import { WhatIfPanel } from '../components/planner/WhatIfPanel';
+import { TransparentBudget } from '../components/budget/TransparentBudget';
 
 export const TripDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'itinerary' | 'map' | 'budget'>('itinerary');
   const [actualCosts, setActualCosts] = useState<Record<string, number>>({});
@@ -177,6 +183,17 @@ export const TripDetailsPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Batch 2: Scoring Widgets & What-If Simulator */}
+        {trip.id && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <TripHealthScore tripId={trip.id} />
+            <TripTrustScore tripId={trip.id} />
+            <div className="md:col-span-2">
+              <WhatIfPanel tripId={trip.id} />
+            </div>
+          </div>
+        )}
+
         {/* Warnings */}
         {warnings.length > 0 && activeTab === 'itinerary' && (
           <div className="mb-6 space-y-2">
@@ -215,7 +232,7 @@ export const TripDetailsPage: React.FC = () => {
                     className="flex items-center gap-2 px-4 py-2 bg-orange-100 text-orange-700 text-sm font-semibold rounded-xl hover:bg-orange-200 transition-colors"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5 10v4a2 2 0 002 2h2l4 4V4L9 8H7a2 2 0 00-2 2z" /></svg>
-                    Read Aloud
+                    {t('trip.readAloud', 'Read Aloud')}
                   </button>
 
                   {/* Export PDF (Feature 6) */}
@@ -224,7 +241,7 @@ export const TripDetailsPage: React.FC = () => {
                     className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-800 transition-colors"
                   >
                     <Download className="w-4 h-4" />
-                    Export as PDF
+                    {t('trip.exportPdf', 'Export Survival PDF')}
                   </button>
                 </div>
 
@@ -289,64 +306,7 @@ export const TripDetailsPage: React.FC = () => {
             {/* BUDGET TAB */}
             {activeTab === 'budget' && (
               <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                    <p className="text-sm text-gray-500 font-semibold mb-1">Estimated Cost</p>
-                    <p className="text-4xl font-black text-gray-900">₹{totalEstimatedCost.toLocaleString()}</p>
-                    <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-                      <Info size={12} /> Based on verified ticket prices
-                    </p>
-                  </div>
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                    <p className="text-sm text-gray-500 font-semibold mb-1">Actual Spent</p>
-                    <p className="text-4xl font-black text-orange-600">₹{totalActualCost.toLocaleString()}</p>
-                    <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-                      <Info size={12} /> Tracked locally on this device
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider font-bold">
-                        <th className="p-4 border-b border-gray-100">Day</th>
-                        <th className="p-4 border-b border-gray-100">Place</th>
-                        <th className="p-4 border-b border-gray-100">Est. Price (Fact)</th>
-                        <th className="p-4 border-b border-gray-100">Actual Spent (₹)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-sm">
-                      {items.map((item, idx) => {
-                        const ticketFact = item.trustSummary?.facts?.find((f: any) => f.fact_key === 'ticket_price');
-                        let estPriceDisplay = <span className="text-gray-400 italic">Unknown - Verify Locally</span>;
-                        
-                        if (ticketFact && ticketFact.fact_value) {
-                          const val = ticketFact.fact_value;
-                          if (val.amount === 0) estPriceDisplay = <span className="text-emerald-600 font-bold">Free</span>;
-                          else if (val.amount) estPriceDisplay = <span className="text-gray-900 font-medium">₹{val.amount} {val.currency === 'INR' ? '' : val.currency}</span>;
-                        }
-
-                        return (
-                          <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
-                            <td className="p-4 font-bold text-gray-400">D{item.dayNumber}</td>
-                            <td className="p-4 font-semibold text-gray-800">{item.attractionName}</td>
-                            <td className="p-4">{estPriceDisplay}</td>
-                            <td className="p-4">
-                              <input
-                                type="number"
-                                placeholder="0"
-                                className="w-24 px-3 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition-all font-mono"
-                                value={actualCosts[item.entityId] || ''}
-                                onChange={(e) => handleActualCostChange(item.entityId, e.target.value)}
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <TransparentBudget attractionIds={items.map(item => item.entityId).filter(Boolean)} />
               </div>
             )}
           </>
