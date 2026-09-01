@@ -45,6 +45,10 @@ app.get('/api/docs', (_req, res) => {
 });
 
 // ─── UptimeRobot Lightweight Health Check ─────────────────────────────────────
+app.get('/', (_req, res) => {
+  res.status(200).json({ status: 'ok', message: 'MargDarshak API is running' });
+});
+
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
