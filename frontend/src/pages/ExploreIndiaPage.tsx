@@ -1,18 +1,29 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Search, Star, MapPin, Tag, Accessibility } from 'lucide-react';
+import { Search, Star, MapPin, Tag, Accessibility, Heart } from 'lucide-react';
 import { MainLayout } from '../components/layout/MainLayout';
 import { knowledgeApi } from '../api/services/knowledgeApi';
 import { searchApi } from '../api/services/searchApi';
+import { favoritesApi } from '../api/services/favoritesApi';
+import { useAuth } from '../lib/AuthContext';
+import { useSavedFavorites } from '../hooks/useSavedFavorites';
 import type { Attraction } from '../types/domain';
 
 export const ExploreIndia: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { attractionIds } = useSavedFavorites();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDestinationId, setSelectedDestinationId] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [wheelchairOnly, setWheelchairOnly] = useState(false);
+  const favoriteMutation = useMutation({
+    mutationFn: favoritesApi.addFavorite,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favorites'] }),
+    onError: (error) => alert((error as { message?: string }).message || 'Could not save attraction'),
+  });
 
   const { data: destinations = [] } = useQuery({
     queryKey: ['destinations'],
@@ -154,36 +165,55 @@ export const ExploreIndia: React.FC = () => {
           <div className="text-gray-500 py-10">Loading attractions...</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {resultAttractions.map((attraction) => (
-              <Link
-                to={`/destination/${attraction.destinationId || selectedDestinationId}`}
-                key={attraction.id}
-                className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 hover:shadow-xl transition-all p-5 flex flex-col gap-4"
-              >
-                <div>
-                  <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1">{attraction.name}</h3>
-	                  <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-sm">
-	                    <MapPin size={14} />
-	                    {attraction.address || attraction.description || 'Attraction record'}
-	                  </div>
-                </div>
+            {resultAttractions.map((attraction) => {
+              const isSaved = attractionIds.has(attraction.id) || (favoriteMutation.isPending && favoriteMutation.variables === attraction.id);
 
-                <div className="flex flex-wrap gap-2 mt-auto">
-                  {attraction.categories.slice(0, 3).map((category) => (
-                    <span key={category} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-50 text-orange-700 text-xs font-semibold">
-                      <Tag size={12} />
-                      {category}
-                    </span>
-                  ))}
-                  {attraction.accessibilityWheelchair && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold">
-                      <Accessibility size={12} />
-                      Wheelchair
-                    </span>
+              return (
+                <div
+                  key={attraction.id}
+                  className="relative bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 hover:shadow-xl transition-all p-5 flex flex-col gap-4"
+                >
+                  {user && (
+                    <button
+                      type="button"
+                      onClick={() => favoriteMutation.mutate(attraction.id)}
+                      disabled={favoriteMutation.isPending || isSaved}
+                      className={`absolute right-4 top-4 rounded-full bg-white/90 p-2 shadow-sm transition-colors hover:bg-orange-50 disabled:opacity-80 dark:bg-gray-800 ${isSaved ? 'text-rose-500' : 'text-orange-600'}`}
+                      title={isSaved ? 'Saved attraction' : 'Save attraction'}
+                    >
+                      <Heart size={16} className={isSaved ? 'fill-current' : ''} />
+                    </button>
                   )}
+                  <div>
+                    <Link
+                      to={`/destination/${attraction.destinationId || selectedDestinationId}`}
+                      className="block pr-12"
+                    >
+                      <h3 className="font-bold text-lg text-gray-900 hover:text-orange-600 dark:text-white mb-1">{attraction.name}</h3>
+                    </Link>
+                    <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 text-sm">
+                      <MapPin size={14} />
+                      {attraction.address || attraction.description || 'Attraction record'}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 mt-auto">
+                    {attraction.categories.slice(0, 3).map((category) => (
+                      <span key={category} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-50 text-orange-700 text-xs font-semibold">
+                        <Tag size={12} />
+                        {category}
+                      </span>
+                    ))}
+                    {attraction.accessibilityWheelchair && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold">
+                        <Accessibility size={12} />
+                        Wheelchair
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </Link>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

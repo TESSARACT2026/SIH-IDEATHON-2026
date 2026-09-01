@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { Star, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Star, ChevronRight, ChevronLeft, Heart } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { knowledgeApi } from '../../api/services/knowledgeApi';
+import { favoritesApi } from '../../api/services/favoritesApi';
+import { useAuth } from '../../lib/AuthContext';
+import { useSavedFavorites } from '../../hooks/useSavedFavorites';
 
 interface Destination {
   id: string;
@@ -219,9 +222,17 @@ export const PopularDestinations: React.FC<PopularDestinationsProps> = ({
   const [page, setPage] = useState(0);
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { destinationIds } = useSavedFavorites();
   const { data: apiDestinations = [] } = useQuery({
     queryKey: ['destinations'],
     queryFn: knowledgeApi.getDestinations,
+  });
+  const favoriteMutation = useMutation({
+    mutationFn: favoritesApi.addDestinationFavorite,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favorites'] }),
+    onError: (error) => alert((error as { message?: string }).message || 'Could not save destination'),
   });
   const liveDestinations = apiDestinations.length > 0
     ? apiDestinations.map((destination, index) => {
@@ -259,41 +270,58 @@ export const PopularDestinations: React.FC<PopularDestinationsProps> = ({
 
       <div className="relative">
         <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4">
-          {shown.map((dest) => (
-            <div
-              key={dest.id}
-              onClick={() => navigate(`/destination/${dest.id}`)}
-              className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-2xl hover:-translate-y-2 hover:border-orange-200 transition-all duration-300 cursor-pointer group"
-            >
-              {/* Photo */}
-              <div className="relative h-40 overflow-hidden">
-                <img
-                  src={dest.image}
-                  alt={dest.name}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out"
-                  onError={(e) => {
-                    // fallback gradient if image fails
-                    const el = e.currentTarget.parentElement!;
-                    e.currentTarget.style.display = 'none';
-                    el.style.background = 'linear-gradient(135deg, #fde68a, #fca5a5)';
-                  }}
-                />
-                {/* Premium Hover Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center p-4">
-                  <span className="text-white font-semibold text-sm translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
-                    View Budget & Info
-                  </span>
+          {shown.map((dest) => {
+            const isSaved = destinationIds.has(dest.id) || (favoriteMutation.isPending && favoriteMutation.variables === dest.id);
+
+            return (
+              <div
+                key={dest.id}
+                onClick={() => navigate(`/destination/${dest.id}`)}
+                className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-2xl hover:-translate-y-2 hover:border-orange-200 transition-all duration-300 cursor-pointer group"
+              >
+                {/* Photo */}
+                <div className="relative h-40 overflow-hidden">
+                  <img
+                    src={dest.image}
+                    alt={dest.name}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out"
+                    onError={(e) => {
+                      // fallback gradient if image fails
+                      const el = e.currentTarget.parentElement!;
+                      e.currentTarget.style.display = 'none';
+                      el.style.background = 'linear-gradient(135deg, #fde68a, #fca5a5)';
+                    }}
+                  />
+                  {/* Premium Hover Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center p-4">
+                    <span className="text-white font-semibold text-sm translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+                      View Budget & Info
+                    </span>
+                  </div>
+                  {user && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        favoriteMutation.mutate(dest.id);
+                      }}
+                      disabled={favoriteMutation.isPending}
+                      className={`absolute right-3 top-3 rounded-full bg-white/90 p-2 shadow-sm transition-colors hover:bg-white disabled:opacity-60 ${isSaved ? 'text-rose-500' : 'text-orange-600'}`}
+                      title={isSaved ? 'Saved destination' : 'Save destination'}
+                    >
+                      <Heart size={16} className={isSaved ? 'fill-current' : ''} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Info */}
+                <div className="p-3">
+                  <h3 className="font-bold text-gray-900 dark:text-white text-sm">{dest.name}</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{dest.state}</p>
                 </div>
               </div>
-
-              {/* Info */}
-              <div className="p-3">
-                <h3 className="font-bold text-gray-900 dark:text-white text-sm">{dest.name}</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{dest.state}</p>
-
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Pagination dots */}

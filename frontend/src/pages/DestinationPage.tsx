@@ -1,18 +1,24 @@
 import React, { useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, MapPin, IndianRupee, Clock, Calendar, Info, ShieldCheck, Store } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, MapPin, IndianRupee, Clock, Calendar, Info, ShieldCheck, Store, Heart } from 'lucide-react';
 import { MainLayout } from '../components/layout/MainLayout';
 import { knowledgeApi } from '../api/services/knowledgeApi';
 import { guideApi } from '../api/services/guideApi';
 import { budgetApi } from '../api/services/budgetApi';
 import { emergencyApi } from '../api/services/emergencyApi';
 import { localBusinessesApi } from '../api/services/localBusinessesApi';
+import { favoritesApi } from '../api/services/favoritesApi';
+import { useAuth } from '../lib/AuthContext';
+import { useSavedFavorites } from '../hooks/useSavedFavorites';
 import { getDestinationVisual } from '../components/dashboard/PopularDestinations';
 
 export const DestinationPage: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { destinationIds, attractionIds } = useSavedFavorites();
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -48,6 +54,18 @@ export const DestinationPage: React.FC = () => {
     enabled: !!id,
   });
 
+  const destinationFavoriteMutation = useMutation({
+    mutationFn: favoritesApi.addDestinationFavorite,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favorites'] }),
+    onError: (error) => alert((error as { message?: string }).message || 'Could not save destination'),
+  });
+
+  const attractionFavoriteMutation = useMutation({
+    mutationFn: favoritesApi.addFavorite,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favorites'] }),
+    onError: (error) => alert((error as { message?: string }).message || 'Could not save attraction'),
+  });
+
   if (isLoading) {
     return (
       <MainLayout>
@@ -73,6 +91,8 @@ export const DestinationPage: React.FC = () => {
   const isDemoData = knowledgeApi.isUsingFallbackData();
   const visual = getDestinationVisual(destination.name, 0);
   const heroImage = visual.image;
+  const isDestinationSaved = destinationIds.has(destination.id)
+    || (destinationFavoriteMutation.isPending && destinationFavoriteMutation.variables === destination.id);
 
   return (
     <MainLayout>
@@ -85,16 +105,29 @@ export const DestinationPage: React.FC = () => {
           Back to Explore
         </button>
 
-	        <div className="relative h-80 md:h-96 rounded-3xl overflow-hidden mb-8 shadow-lg">
-	          <img src={heroImage} alt={destination.name} className="w-full h-full object-cover" />
+        <div className="relative h-80 md:h-96 rounded-3xl overflow-hidden mb-8 shadow-lg">
+          <img src={heroImage} alt={destination.name} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent flex flex-col justify-end p-8 md:p-12">
             <div className="flex items-center gap-2 text-white/90 mb-2">
               <MapPin size={18} />
               <span className="font-medium tracking-wide">{locationLabel}</span>
             </div>
-            <h1 className="text-4xl md:text-6xl font-black text-white mb-4">{destination.name}</h1>
-	          </div>
-	        </div>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <h1 className="text-4xl md:text-6xl font-black text-white">{destination.name}</h1>
+              {user && (
+                <button
+                  type="button"
+                  onClick={() => destinationFavoriteMutation.mutate(destination.id)}
+                  disabled={destinationFavoriteMutation.isPending || isDestinationSaved}
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold shadow-sm transition-colors hover:bg-orange-50 disabled:opacity-80 ${isDestinationSaved ? 'text-rose-500' : 'text-orange-600'}`}
+                >
+                  <Heart size={17} className={isDestinationSaved ? 'fill-current' : ''} />
+                  {isDestinationSaved ? 'Saved' : 'Save Destination'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
 
         {isDemoData && (
           <div className="mb-8 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
@@ -108,23 +141,43 @@ export const DestinationPage: React.FC = () => {
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                 <Info className="text-orange-500" />
                 About {destination.name}
-	              </h2>
-	              <p className="text-gray-600 dark:text-gray-400 leading-relaxed text-lg">
-	                Explore {destination.name} with {attractions.length || destination._count?.attractions || 0} attraction records, local businesses, accessibility data, and trust signals from the backend.
-	              </p>
-	            </div>
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400 leading-relaxed text-lg">
+                Explore {destination.name} with {attractions.length || destination._count?.attractions || 0} attraction records, local businesses, accessibility data, and trust signals from the backend.
+              </p>
+            </div>
 
             <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-100 dark:border-gray-800 shadow-sm">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Top Attractions</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {attractions.slice(0, 6).map((attraction) => (
-                  <Link key={attraction.id} to="/attractions" className="p-4 rounded-2xl bg-orange-50 dark:bg-orange-900/10 text-orange-700 dark:text-orange-400 font-medium">
-	                    <p className="font-bold">{attraction.name}</p>
-	                    <p className="text-xs mt-1 text-orange-700/70 dark:text-orange-300/70">
-	                      {attraction.trustWarnings.length === 0 ? 'Trust essentials available' : `${attraction.trustWarnings.length} trust warning(s)`}
-	                    </p>
-	                  </Link>
-                ))}
+                {attractions.slice(0, 6).map((attraction) => {
+                  const isAttractionSaved = attractionIds.has(attraction.id)
+                    || (attractionFavoriteMutation.isPending && attractionFavoriteMutation.variables === attraction.id);
+
+                  return (
+                    <div key={attraction.id} className="p-4 rounded-2xl bg-orange-50 dark:bg-orange-900/10 text-orange-700 dark:text-orange-400 font-medium">
+                      <div className="flex items-start justify-between gap-3">
+                        <Link to="/attractions" className="min-w-0 flex-1">
+                          <p className="font-bold">{attraction.name}</p>
+                          <p className="text-xs mt-1 text-orange-700/70 dark:text-orange-300/70">
+                            {attraction.trustWarnings.length === 0 ? 'Trust essentials available' : `${attraction.trustWarnings.length} trust warning(s)`}
+                          </p>
+                        </Link>
+                        {user && !attraction.id.includes('-suggested-') && (
+                          <button
+                            type="button"
+                            onClick={() => attractionFavoriteMutation.mutate(attraction.id)}
+                            disabled={attractionFavoriteMutation.isPending || isAttractionSaved}
+                            className={`rounded-lg bg-white/80 p-2 transition-colors hover:bg-white disabled:opacity-80 dark:bg-gray-900/80 ${isAttractionSaved ? 'text-rose-500' : 'text-orange-600'}`}
+                            title={isAttractionSaved ? 'Saved attraction' : 'Save attraction'}
+                          >
+                            <Heart size={16} className={isAttractionSaved ? 'fill-current' : ''} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -170,11 +223,11 @@ export const DestinationPage: React.FC = () => {
                 </div>
 
                 <div className="pt-4 border-t border-white/20">
-	                  <p className="text-orange-100 text-sm font-medium mb-1 flex items-center gap-2">
-	                    <Calendar size={16} /> Emergency Contacts
-	                  </p>
-	                  <p className="text-lg font-bold">{emergency?.contacts.length || 0} emergency number(s)</p>
-	                </div>
+                  <p className="text-orange-100 text-sm font-medium mb-1 flex items-center gap-2">
+                    <Calendar size={16} /> Emergency Contacts
+                  </p>
+                  <p className="text-lg font-bold">{emergency?.contacts.length || 0} emergency number(s)</p>
+                </div>
               </div>
 
               <button

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
   MapPin,
@@ -18,6 +18,7 @@ import { crowdApi } from '../api/services/crowdApi';
 import { guideApi } from '../api/services/guideApi';
 import { favoritesApi } from '../api/services/favoritesApi';
 import { useAuth } from '../lib/AuthContext';
+import { useSavedFavorites } from '../hooks/useSavedFavorites';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { FactProvenanceDrawer } from '../components/trust/FactProvenanceDrawer';
@@ -26,7 +27,9 @@ import { Attraction, FactProvenance } from '../types/domain';
 
 export const AttractionExplorerPage: React.FC = () => {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { attractionIds } = useSavedFavorites();
   const [selectedDestinationId, setSelectedDestinationId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [wheelchairOnly, setWheelchairOnly] = useState(false);
@@ -78,6 +81,8 @@ export const AttractionExplorerPage: React.FC = () => {
 
   const favoriteMutation = useMutation({
     mutationFn: (attractionId: string) => favoritesApi.addFavorite(attractionId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favorites'] }),
+    onError: (error) => alert((error as { message?: string }).message || 'Could not save attraction'),
   });
 
   const crowdMutation = useMutation({
@@ -181,94 +186,99 @@ export const AttractionExplorerPage: React.FC = () => {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredAttractions.map((attraction) => (
-            <Card
-              key={attraction.id}
-              className="group border-slate-200 hover:shadow-lg transition-all flex flex-col justify-between"
-            >
-              <CardContent className="p-6 space-y-4">
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-lg font-bold text-slate-900 group-hover:text-orange-600 transition-colors">
-                      {attraction.name}
-                    </h3>
-                    <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
-                      {attraction.indoorOutdoor}
-                    </span>
+          {filteredAttractions.map((attraction) => {
+            const isSaved = attractionIds.has(attraction.id) || (favoriteMutation.isPending && favoriteMutation.variables === attraction.id);
+
+            return (
+              <Card
+                key={attraction.id}
+                className="group border-slate-200 hover:shadow-lg transition-all flex flex-col justify-between"
+              >
+                <CardContent className="p-6 space-y-4">
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="text-lg font-bold text-slate-900 group-hover:text-orange-600 transition-colors">
+                        {attraction.name}
+                      </h3>
+                      <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
+                        {attraction.indoorOutdoor}
+                      </span>
+                    </div>
+
+                    {attraction.description && (
+                      <p className="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
+                        {attraction.description}
+                      </p>
+                    )}
                   </div>
 
-                  {attraction.description && (
-                    <p className="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
-                      {attraction.description}
-                    </p>
-                  )}
-                </div>
+                  {/* Categories */}
+                  <div className="flex flex-wrap gap-1">
+                    {attraction.categories.map((cat, i) => (
+                      <span
+                        key={i}
+                        className="text-[11px] font-medium bg-orange-50 text-orange-700 px-2 py-0.5 rounded-md border border-orange-100"
+                      >
+                        {cat}
+                      </span>
+                    ))}
+                  </div>
 
-                {/* Categories */}
-                <div className="flex flex-wrap gap-1">
-                  {attraction.categories.map((cat, i) => (
-                    <span
-                      key={i}
-                      className="text-[11px] font-medium bg-orange-50 text-orange-700 px-2 py-0.5 rounded-md border border-orange-100"
-                    >
-                      {cat}
-                    </span>
-                  ))}
-                </div>
+                  {/* Accessibility Badges */}
+                  <div className="flex items-center gap-2 pt-2 text-xs border-t border-slate-100">
+                    {attraction.accessibilityWheelchair && (
+                      <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
+                        <Accessibility className="h-3 w-3" />
+                        Wheelchair
+                      </span>
+                    )}
+                    {attraction.accessibilityVisual && (
+                      <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
+                        <Eye className="h-3 w-3" />
+                        Visual Support
+                      </span>
+                    )}
+                    {attraction.accessibilityHearing && (
+                      <span className="flex items-center gap-1 text-[11px] font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">
+                        <Volume2 className="h-3 w-3" />
+                        Hearing Support
+                      </span>
+                    )}
+                  </div>
 
-                {/* Accessibility Badges */}
-                <div className="flex items-center gap-2 pt-2 text-xs border-t border-slate-100">
-                  {attraction.accessibilityWheelchair && (
-                    <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                      <Accessibility className="h-3 w-3" />
-                      Wheelchair
-                    </span>
-                  )}
-                  {attraction.accessibilityVisual && (
-                    <span className="flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
-                      <Eye className="h-3 w-3" />
-                      Visual Support
-                    </span>
-                  )}
-                  {attraction.accessibilityHearing && (
-                    <span className="flex items-center gap-1 text-[11px] font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md">
-                      <Volume2 className="h-3 w-3" />
-                      Hearing Support
-                    </span>
-                  )}
-                </div>
-
-                {/* Action: View Provenance Audit */}
-                <div className="pt-2">
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 text-xs font-semibold h-9 rounded-xl justify-between border-slate-200 hover:border-orange-500 hover:text-orange-600"
-                      onClick={() => setActiveAttractionForAudit(attraction)}
-                    >
-	                      <div className="flex items-center gap-1.5">
-	                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
-	                        <span>Audit Facts</span>
-	                      </div>
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                    {user && (
+                  {/* Action: View Provenance Audit */}
+                  <div className="pt-2">
+                    <div className="flex gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-9 rounded-xl border-slate-200"
-                        onClick={() => favoriteMutation.mutate(attraction.id)}
-                        title="Save favorite"
+                        className="flex-1 text-xs font-semibold h-9 rounded-xl justify-between border-slate-200 hover:border-orange-500 hover:text-orange-600"
+                        onClick={() => setActiveAttractionForAudit(attraction)}
                       >
-                        <Heart className="h-4 w-4 text-rose-500" />
+                        <div className="flex items-center gap-1.5">
+                          <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                          <span>Audit Facts</span>
+                        </div>
+                        <ChevronRight className="h-4 w-4" />
                       </Button>
-                    )}
+                      {user && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={`h-9 rounded-xl border-slate-200 ${isSaved ? 'text-rose-500' : ''}`}
+                          onClick={() => favoriteMutation.mutate(attraction.id)}
+                          disabled={favoriteMutation.isPending || isSaved}
+                          title={isSaved ? 'Saved favorite' : 'Save favorite'}
+                        >
+                          <Heart className={`h-4 w-4 text-rose-500 ${isSaved ? 'fill-current' : ''}`} />
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 

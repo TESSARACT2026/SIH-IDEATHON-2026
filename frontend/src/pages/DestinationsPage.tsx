@@ -1,16 +1,27 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { MapPin, Search, Star } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Heart, MapPin, Search, Star } from 'lucide-react';
 import { MainLayout } from '../components/layout/MainLayout';
 import { knowledgeApi } from '../api/services/knowledgeApi';
+import { favoritesApi } from '../api/services/favoritesApi';
+import { useAuth } from '../lib/AuthContext';
+import { useSavedFavorites } from '../hooks/useSavedFavorites';
 import { getDestinationVisual } from '../components/dashboard/PopularDestinations';
 
 export const DestinationsPage: React.FC = () => {
   const [query, setQuery] = React.useState('');
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { destinationIds } = useSavedFavorites();
   const { data: destinations = [], isLoading } = useQuery({
     queryKey: ['destinations'],
     queryFn: knowledgeApi.getDestinations,
+  });
+  const favoriteMutation = useMutation({
+    mutationFn: favoritesApi.addDestinationFavorite,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favorites'] }),
+    onError: (error) => alert((error as { message?: string }).message || 'Could not save destination'),
   });
 
   const filtered = destinations.filter((destination) => {
@@ -51,14 +62,14 @@ export const DestinationsPage: React.FC = () => {
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((destination, index) => {
               const visual = getDestinationVisual(destination.name, index);
+              const isSaved = destinationIds.has(destination.id) || (favoriteMutation.isPending && favoriteMutation.variables === destination.id);
 
               return (
-                <Link
+                <div
                   key={destination.id}
-                  to={`/destination/${destination.id}`}
-                  className="group overflow-hidden rounded-2xl border border-gray-200 bg-white transition-all hover:-translate-y-1 hover:shadow-lg dark:border-gray-800 dark:bg-gray-900"
+                  className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white transition-all hover:-translate-y-1 hover:shadow-lg dark:border-gray-800 dark:bg-gray-900"
                 >
-                  <div className="relative h-44 overflow-hidden">
+                  <Link to={`/destination/${destination.id}`} className="relative block h-44 overflow-hidden">
                     <img
                       src={visual.image}
                       alt={destination.name}
@@ -68,15 +79,28 @@ export const DestinationsPage: React.FC = () => {
                       }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-                  </div>
+                  </Link>
+                  {user && (
+                    <button
+                      type="button"
+                      onClick={() => favoriteMutation.mutate(destination.id)}
+                      disabled={favoriteMutation.isPending || isSaved}
+                      className={`absolute right-4 top-4 rounded-full bg-white/90 p-2 shadow-sm transition-colors hover:bg-white disabled:opacity-80 ${isSaved ? 'text-rose-500' : 'text-orange-600'}`}
+                      title={isSaved ? 'Saved destination' : 'Save destination'}
+                    >
+                      <Heart size={17} className={isSaved ? 'fill-current' : ''} />
+                    </button>
+                  )}
                   <div className="p-5">
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">{destination.name}</h2>
+                    <Link to={`/destination/${destination.id}`} className="text-lg font-bold text-gray-900 hover:text-orange-600 dark:text-white">
+                      {destination.name}
+                    </Link>
                     <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
                       <MapPin size={14} />
                       {[destination.region, destination.country].filter(Boolean).join(', ')}
                     </p>
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>
