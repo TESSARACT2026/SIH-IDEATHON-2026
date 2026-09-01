@@ -163,6 +163,7 @@ model Destination {
   attractions     Attraction[]
   localBusinesses LocalBusiness[]
   trips           Trip[]
+  favorites       Favorite[]
 
   @@map("destinations")
 }
@@ -402,15 +403,19 @@ model Feedback {
 // ─── Favorites ──────────────────────────────────────────────────────────────
 
 model Favorite {
-  id           String   @id @default(uuid())
-  userId       String   @map("user_id")
-  attractionId String   @map("attraction_id")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  attractionId  String?  @map("attraction_id")
+  destinationId String?  @map("destination_id")
+  createdAt     DateTime @default(now()) @map("created_at")
 
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  attraction Attraction @relation(fields: [attractionId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attraction  Attraction?  @relation(fields: [attractionId], references: [id], onDelete: Cascade)
+  destination Destination? @relation(fields: [destinationId], references: [id], onDelete: Cascade)
 
   @@unique([userId, attractionId])
+  @@unique([userId, destinationId])
   @@index([attractionId])
+  @@index([destinationId])
   @@map("favorites")
 }

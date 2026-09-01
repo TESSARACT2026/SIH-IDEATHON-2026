@@ -699,9 +699,14 @@ async function testFavorites() {
   await test('GET /favorites (empty list)', async () => {
     const r = await req('GET', `${API}/favorites`);
     const b = r.body as Record<string, unknown>;
-    const data = b.data as unknown[];
-    if (r.ok && !Array.isArray(data)) return { ...r, ok: false };
+    const data = b.data as { destinations?: unknown[]; attractions?: unknown[] };
+    if (r.ok && (!Array.isArray(data.destinations) || !Array.isArray(data.attractions))) return { ...r, ok: false };
     return r;
+  });
+
+  await test('POST /favorites (add destination)', async () => {
+    if (!destId) return { ok: false, status: 0, body: 'destId not available' };
+    return req('POST', `${API}/favorites`, { destinationId: destId });
   });
 
   await test('POST /favorites (add attraction)', async () => {
@@ -717,6 +722,11 @@ async function testFavorites() {
   await test('DELETE /favorites/:attrId', async () => {
     if (!attrId) return { ok: false, status: 0, body: 'attrId not available' };
     return req('DELETE', `${API}/favorites/${attrId}`);
+  });
+
+  await test('DELETE /favorites/destinations/:destId', async () => {
+    if (!destId) return { ok: false, status: 0, body: 'destId not available' };
+    return req('DELETE', `${API}/favorites/destinations/${destId}`);
   });
 }
 
