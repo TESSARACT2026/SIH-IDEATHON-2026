@@ -4,10 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import heroBg from '/hero-image/hero-bg.jpg';
 
-interface HeroSectionProps {
-  onSearch?: (query: string) => void;
-}
-
 // Custom icons to match the image exactly
 const ShieldTickIcon = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -23,7 +19,7 @@ const LockIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-export const HeroSection: React.FC<HeroSectionProps> = ({ onSearch }) => {
+export const HeroSection: React.FC = () => {
   const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
@@ -31,7 +27,6 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearch }) => {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      onSearch?.(searchQuery);
       navigate(`/explore?q=${encodeURIComponent(searchQuery)}`);
     }
   };
@@ -170,8 +165,8 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearch }) => {
             <div className="flex items-center gap-4 flex-1 justify-center">
               <ShieldTickIcon className="w-7 h-7 text-[#16a34a]" />
               <div>
-                <p className="text-[14.5px] font-bold text-gray-900 leading-snug">Verified Places</p>
-                <p className="text-[13.5px] text-gray-400 font-medium">100% Trusted</p>
+                <p className="text-[14.5px] font-bold text-gray-900 leading-snug">Trusted Records</p>
+                <p className="text-[13.5px] text-gray-400 font-medium">Source-aware</p>
               </div>
             </div>
 
@@ -205,10 +200,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onSearch }) => {
             {/* Badge 4 */}
             <div className="flex items-center gap-4 flex-1 justify-center">
               <LockIcon className="w-7 h-7 text-[#f97316]" />
-              <div>
-                <p className="text-[14.5px] font-bold text-gray-900 leading-snug">Secure & Safe</p>
-                <p className="text-[13.5px] text-gray-400 font-medium">Govt. Verified</p>
-              </div>
+	              <div>
+	                <p className="text-[14.5px] font-bold text-gray-900 leading-snug">Secure & Safe</p>
+	                <p className="text-[13.5px] text-gray-400 font-medium">Protected Access</p>
+	              </div>
             </div>
           </div>
         </div>

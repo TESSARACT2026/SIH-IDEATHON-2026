@@ -12,7 +12,6 @@ import {
   Radio,
 } from 'lucide-react';
 import { liveApi } from '../../api/services/liveApi';
-import { TrustBadge } from '../trust/TrustBadge';
 
 interface WeatherWidgetProps {
   lat?: number;
@@ -27,14 +26,15 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
   cityName = 'Bhubaneswar, Odisha',
   className = '',
 }) => {
-  const { data: weather, isLoading } = useQuery({
+  const { data: weather, isLoading, isError } = useQuery({
     queryKey: ['weather', lat, lon],
     queryFn: () => liveApi.getLiveWeather(lat, lon),
     staleTime: 1000 * 60 * 15,
   });
 
-  const temp = weather?.temperature_celsius ?? weather?.temperature ?? 28;
-  const condition = weather?.condition || 'clear';
+  const hasLiveWeather = !!weather && !isError;
+  const temp = hasLiveWeather ? weather.temperature_celsius ?? weather.temperature : undefined;
+  const condition = hasLiveWeather ? weather.condition || 'clear' : 'unavailable';
 
   const getWeatherIcon = (cond: string) => {
     switch (cond.toLowerCase()) {
@@ -62,33 +62,33 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
         <div>
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-slate-900">{cityName}</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
-              <Radio className="h-2.5 w-2.5 text-emerald-600 animate-pulse" />
-              Live Ground Weather
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 font-medium capitalize mt-0.5">
-            {isLoading ? 'Checking ground satellites...' : `${condition} skies • Updated real-time`}
-          </p>
+	            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border ${hasLiveWeather ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+	              <Radio className={`h-2.5 w-2.5 ${hasLiveWeather ? 'text-emerald-600 animate-pulse' : 'text-slate-400'}`} />
+	              {hasLiveWeather ? 'Live Ground Weather' : 'Weather Unavailable'}
+	            </span>
+	          </div>
+	          <p className="text-xs text-slate-500 font-medium capitalize mt-0.5">
+	            {isLoading ? 'Checking ground weather...' : hasLiveWeather ? `${condition} skies • Updated real-time` : 'Live weather could not be loaded'}
+	          </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-4 text-xs text-slate-700 bg-white/80 px-3.5 py-2 rounded-xl border border-slate-100 shadow-2xs">
-        <div className="text-left sm:text-right">
-          <span className="text-2xl font-black text-slate-900">
-            {Math.round(temp)}°C
-          </span>
-        </div>
+	      <div className="flex items-center gap-4 text-xs text-slate-700 bg-white/80 px-3.5 py-2 rounded-xl border border-slate-100 shadow-2xs">
+	        <div className="text-left sm:text-right">
+	          <span className="text-2xl font-black text-slate-900">
+	            {temp !== undefined ? `${Math.round(temp)}°C` : '--'}
+	          </span>
+	        </div>
         <div className="h-8 w-px bg-slate-200" />
         <div className="space-y-0.5 text-[11px]">
-          <div className="flex items-center gap-1.5 text-slate-600">
-            <Droplets className="h-3.5 w-3.5 text-sky-500" />
-            <span>Humidity: <strong>{weather?.humidity || 68}%</strong></span>
-          </div>
-          <div className="flex items-center gap-1.5 text-slate-600">
-            <Wind className="h-3.5 w-3.5 text-slate-400" />
-            <span>Wind: <strong>{weather?.windSpeed || 14} km/h</strong></span>
-          </div>
+	          <div className="flex items-center gap-1.5 text-slate-600">
+	            <Droplets className="h-3.5 w-3.5 text-sky-500" />
+	            <span>Humidity: <strong>{hasLiveWeather && weather.humidity !== undefined ? `${weather.humidity}%` : '--'}</strong></span>
+	          </div>
+	          <div className="flex items-center gap-1.5 text-slate-600">
+	            <Wind className="h-3.5 w-3.5 text-slate-400" />
+	            <span>Wind: <strong>{hasLiveWeather && weather.windSpeed !== undefined ? `${weather.windSpeed} km/h` : '--'}</strong></span>
+	          </div>
         </div>
       </div>
 

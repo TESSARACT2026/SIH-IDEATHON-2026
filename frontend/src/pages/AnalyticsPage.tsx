@@ -1,18 +1,33 @@
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, ShieldCheck, MapPin, Users, Loader2, AlertTriangle, TrendingUp } from 'lucide-react';
-import { env } from '../config/env';
+import { analyticsApi } from '../api/services/analyticsApi';
+import { feedbackApi } from '../api/services/feedbackApi';
 
 export const AnalyticsPage: React.FC = () => {
+  const queryClient = useQueryClient();
   const { data: metrics, isLoading, error } = useQuery({
     queryKey: ['analytics-dashboard'],
-    queryFn: async () => {
-      const res = await fetch(`${env.API_URL}/analytics/dashboard`);
-      if (!res.ok) throw new Error('Failed to fetch analytics');
-      const json = await res.json();
-      return json.data;
-    },
+    queryFn: analyticsApi.getDashboard,
     refetchInterval: 60000, // Real-time refresh every minute
+  });
+
+  const { data: reviewQueue = [] } = useQuery({
+    queryKey: ['feedback-review-queue'],
+    queryFn: () => feedbackApi.getReviewQueue('PENDING', 5),
+    retry: false,
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'REVIEWED' | 'ACCEPTED' | 'REJECTED' }) =>
+      feedbackApi.review(id, { status, notes: `Marked ${status.toLowerCase()} from analytics dashboard` }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['feedback-review-queue'] }),
+  });
+
+  const reverifyMutation = useMutation({
+    mutationFn: (factId: string) =>
+      feedbackApi.reverifyFact(factId, 'VERIFIED', 'Reverified from analytics dashboard'),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['feedback-review-queue'] }),
   });
 
   if (isLoading) {
@@ -95,6 +110,46 @@ export const AnalyticsPage: React.FC = () => {
           </div>
           <p className="text-xs text-gray-400 mt-6 text-center italic">Metrics are updated in real-time from the PostgreSQL replica.</p>
         </div>
+
+        {reviewQueue.length > 0 && (
+          <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Admin Feedback Review Queue</h2>
+            <div className="space-y-3">
+              {reviewQueue.map((item) => (
+                <div key={item.id} className="rounded-xl border border-gray-100 p-4 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-bold text-gray-900">{item.feedbackType} {item.entityType}</p>
+                    <span className="text-xs text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">{item.status}</span>
+                  </div>
+                  {item.note && <p className="text-gray-500 mt-1">{item.note}</p>}
+                  {item.fact && <p className="text-xs text-gray-400 mt-2">Fact: {item.fact.factKey} · {item.fact.verificationStatus}</p>}
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <button
+                      onClick={() => reviewMutation.mutate({ id: item.id, status: 'ACCEPTED' })}
+                      className="text-xs font-bold px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => reviewMutation.mutate({ id: item.id, status: 'REJECTED' })}
+                      className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-50 text-red-700"
+                    >
+                      Reject
+                    </button>
+                    {item.fact && (
+                      <button
+                        onClick={() => reverifyMutation.mutate(item.fact!.id)}
+                        className="text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700"
+                      >
+                        Reverify Fact
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

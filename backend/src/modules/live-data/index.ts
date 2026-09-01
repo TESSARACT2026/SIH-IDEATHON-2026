@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getLiveWeather } from './weather.js';
+import { getLiveWeather, getWeatherForecast } from './weather.js';
 import { getRoute } from './routing.js';
 import { z } from 'zod';
 import { validate } from '../../shared/middleware/validate.js';
@@ -10,6 +10,14 @@ const coordSchema = z.object({
   lat: z.coerce.number().min(-90).max(90),
   lon: z.coerce.number().min(-180).max(180),
 }).strict();
+
+const forecastSchema = coordSchema.extend({
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+}).refine((value) => value.startDate <= value.endDate, {
+  message: 'startDate must be before or equal to endDate',
+  path: ['endDate'],
+});
 
 const routeSchema = z.object({
   startLat: z.coerce.number().min(-90).max(90),
@@ -23,6 +31,16 @@ router.get('/weather', async (req, res, next) => {
   try {
     const { lat, lon } = coordSchema.parse(req.query);
     const data = await getLiveWeather(lat, lon);
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/forecast', async (req, res, next) => {
+  try {
+    const { lat, lon, startDate, endDate } = forecastSchema.parse(req.query);
+    const data = await getWeatherForecast(lat, lon, startDate, endDate);
     res.json({ data });
   } catch (err) {
     next(err);

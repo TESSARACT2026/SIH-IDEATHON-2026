@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Compass, Sparkles, MapPin, AlertCircle, RefreshCw } from 'lucide-react';
+import { Compass, Sparkles, MapPin, AlertCircle, RefreshCw, Save } from 'lucide-react';
 import { knowledgeApi } from '../api/services/knowledgeApi';
 import { plannerApi } from '../api/services/plannerApi';
+import { tripsApi } from '../api/services/tripsApi';
+import { useAuth } from '../lib/AuthContext';
 import { TripWizard } from '../components/planner/TripWizard';
 import { ItineraryTimeline } from '../components/planner/ItineraryTimeline';
 import { ExcludedStopsList } from '../components/planner/ExcludedStopsList';
@@ -15,6 +17,7 @@ import { VoicePromptInput } from '../components/planner/VoicePromptInput';
 import { PlannerInput, ItineraryPlanResponse, ItineraryItem, NLUExtractResult } from '../types/domain';
 
 export const PlannerPage: React.FC = () => {
+  const { user } = useAuth();
   const location = useLocation();
   const locationState = location.state as {
     destinationId?: string;
@@ -85,6 +88,23 @@ export const PlannerPage: React.FC = () => {
     mutationFn: (input: PlannerInput) => plannerApi.generateItinerary(input),
   });
 
+  const saveTripMutation = useMutation({
+    mutationFn: async (plan: ItineraryPlanResponse) => {
+      const start = new Date(plannerInput.startDate);
+      const end = new Date(start);
+      end.setDate(start.getDate() + plannerInput.days);
+      const trip = await tripsApi.create({
+        destinationId: plannerInput.destinationId,
+        title: `${currentDestination?.name || 'Planned'} Trip`,
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        status: 'PLANNED',
+      });
+      await tripsApi.saveSnapshot(trip.id, plan as unknown as Record<string, unknown>);
+      return trip;
+    },
+  });
+
   const handleGenerate = () => {
     if (!plannerInput.destinationId) return;
     generateMutation.mutate(plannerInput);
@@ -107,6 +127,7 @@ export const PlannerPage: React.FC = () => {
 
   const currentDestination = destinations.find((d) => d.id === plannerInput.destinationId);
   const planData: ItineraryPlanResponse | undefined = generateMutation.data;
+  const isFallbackPlan = planData?.warnings.some((warning) => warning.startsWith('Demo fallback plan')) ?? false;
 
   const mapCenter: [number, number] = currentDestination
     ? [currentDestination.latitude, currentDestination.longitude]
@@ -117,12 +138,12 @@ export const PlannerPage: React.FC = () => {
       {/* Top Header & Voice Assistant */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div>
-          <div className="flex items-center gap-2 text-orange-600">
-            <Compass className="h-5 w-5" />
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
-              Verified Itinerary Builder
-            </h1>
-          </div>
+	          <div className="flex items-center gap-2 text-orange-600">
+	            <Compass className="h-5 w-5" />
+	            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
+	              Trust-Aware Itinerary Builder
+	            </h1>
+	          </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Build your personalized trip backed by real hours, wheelchair audits, and transparent travel times.
           </p>
@@ -152,6 +173,14 @@ export const PlannerPage: React.FC = () => {
                 items={planData.itineraryItems}
                 transportMode={plannerInput.preferences.transportPreference}
               />
+              <button
+                onClick={() => planData && saveTripMutation.mutate(planData)}
+                disabled={!user || saveTripMutation.isPending || saveTripMutation.isSuccess}
+                className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl bg-slate-900 text-white text-sm font-bold disabled:opacity-50"
+              >
+                <Save size={16} />
+                {!user ? 'Sign in to save this trip' : saveTripMutation.isPending ? 'Saving trip...' : saveTripMutation.isSuccess ? 'Trip saved' : 'Save Trip'}
+              </button>
               <ExcludedStopsList excluded={planData.excluded} />
             </>
           )}
@@ -205,11 +234,11 @@ export const PlannerPage: React.FC = () => {
               <h3 className="text-base font-bold text-slate-900">
                 Itinerary Schedule
               </h3>
-              {planData && (
-                <span className="text-xs text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-                  ✓ {planData.itineraryItems.length} Verified Stops Scheduled
-                </span>
-              )}
+	              {planData && (
+	                <span className={`text-xs font-semibold px-2.5 py-1 rounded-md border ${isFallbackPlan ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-emerald-700 bg-emerald-50 border-emerald-200'}`}>
+	                  {isFallbackPlan ? 'Demo fallback plan' : `✓ ${planData.itineraryItems.length} Verified Stops Scheduled`}
+	                </span>
+	              )}
             </div>
 
             <ItineraryTimeline

@@ -44,16 +44,16 @@
     "exploreTitle": "Explore",
     "exploreSubtitle": "Incredible",
     "exploreCountry": "India",
-    "exploreDesc": "Discover verified places, smart itineraries and real-time travel insights across India.",
+    "exploreDesc": "Discover source-aware places, smart itineraries and real-time travel insights across India.",
     "searchPlaceholder": "Where do you want to explore?",
-    "verifiedPlaces": "Verified Places",
-    "trustedDesc": "100% Trusted",
+    "verifiedPlaces": "Trusted Records",
+    "trustedDesc": "Source-aware",
     "liveWeather": "Live Weather",
     "weatherDesc": "Real-time Updates",
     "accessible": "Accessible Travel",
     "accessibleDesc": "Everyone Friendly",
     "secureLabel": "Secure & Safe",
-    "secureDesc": "Govt. Verified"
+    "secureDesc": "Protected Access"
   },
   "trust": {
     "title": "Provenance & Verification",

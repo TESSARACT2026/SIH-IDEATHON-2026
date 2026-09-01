@@ -51,14 +51,24 @@ export async function getHolidays(countryCode: string, year: number) {
 
   try {
     const response = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/${countryCode}`);
-    if (!response.ok) return [];
+    if (!response.ok) return getFallbackHolidays(countryCode, year);
     
     const data = await response.json();
     holidayCache.set(cacheKey, data);
     return data;
   } catch {
-    return [];
+    return getFallbackHolidays(countryCode, year);
   }
+}
+
+function getFallbackHolidays(countryCode: string, year: number) {
+  if (countryCode !== 'IN') return [];
+  return [
+    { date: `${year}-01-26`, localName: 'Republic Day', name: 'Republic Day' },
+    { date: `${year}-08-15`, localName: 'Independence Day', name: 'Independence Day' },
+    { date: `${year}-10-02`, localName: 'Gandhi Jayanti', name: 'Gandhi Jayanti' },
+    { date: `${year}-12-25`, localName: 'Christmas Day', name: 'Christmas Day' },
+  ];
 }
 
 router.get('/holidays', validate(holidayQuerySchema, 'query'), async (req, res, next) => {

@@ -116,8 +116,8 @@ function App() {
                 <Route path="/planner" element={<PlannerPage />} />
                 <Route path="/attractions" element={<AttractionExplorerPage />} />
                 <Route path="/share/:token" element={<SharedTripPage />} />
-                <Route path="/trips/:id" element={<TripDetailsPage />} />
-                <Route path="/analytics" element={<AnalyticsPage />} />
+                <Route path="/trips/:id" element={<ProtectedRoute><TripDetailsPage /></ProtectedRoute>} />
+                <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
                 <Route path="/destination/:id" element={<DestinationPage />} />
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />

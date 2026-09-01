@@ -17,4 +17,9 @@ export const nluApi = {
     });
     return response.data.data;
   },
+
+  synthesizeSpeech: async (text: string, languageCode = 'en-IN'): Promise<Blob> => {
+    const response = await apiClient.post('/nlu/speech', { text, languageCode, format: 'wav' }, { responseType: 'blob' });
+    return response.data;
+  },
 };

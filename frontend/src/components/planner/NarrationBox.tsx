@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, CheckCircle2, MessageSquareText, Loader2 } from 'lucide-react';
+import { Sparkles, CheckCircle2, MessageSquareText, Loader2, Volume2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { nluApi } from '../../api/services/nluApi';
@@ -12,6 +12,7 @@ interface NarrationBoxProps {
 export const NarrationBox: React.FC<NarrationBoxProps> = ({ items }) => {
   const [narration, setNarration] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const handleGenerateNarration = async () => {
     if (items.length === 0) return;
@@ -33,6 +34,19 @@ export const NarrationBox: React.FC<NarrationBoxProps> = ({ items }) => {
       console.error('Narration generation failed:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSpeak = async () => {
+    if (!narration) return;
+    setIsSpeaking(true);
+    try {
+      const audio = new Audio(URL.createObjectURL(await nluApi.synthesizeSpeech(narration)));
+      audio.onended = () => setIsSpeaking(false);
+      await audio.play();
+    } catch (err) {
+      console.error('Speech synthesis failed:', err);
+      setIsSpeaking(false);
     }
   };
 
@@ -76,6 +90,16 @@ export const NarrationBox: React.FC<NarrationBoxProps> = ({ items }) => {
               <CheckCircle2 className="h-3.5 w-3.5" />
               Passed Trust Validation Gate (Zero Hallucinated Facts)
             </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSpeak}
+              disabled={isSpeaking}
+              className="text-xs h-7 gap-1 border-indigo-200 hover:bg-indigo-100"
+            >
+              <Volume2 className="h-3 w-3 text-indigo-600" />
+              {isSpeaking ? 'Playing...' : 'Play Voice'}
+            </Button>
           </div>
         ) : (
           <p className="text-xs text-slate-500">

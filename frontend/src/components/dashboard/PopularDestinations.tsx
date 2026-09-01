@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Star, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { knowledgeApi } from '../../api/services/knowledgeApi';
 
 interface Destination {
   id: string;
@@ -97,6 +99,54 @@ const defaultDestinations: Destination[] = [
   },
 ];
 
+const backendVisuals: Array<Pick<Destination, 'name' | 'rating' | 'reviews' | 'emoji' | 'emojiBg' | 'image'>> = [
+  {
+    name: 'Bhubaneswar',
+    rating: 4.8,
+    reviews: 'Backend',
+    emoji: '🏛️',
+    emojiBg: 'bg-orange-400',
+    image: 'https://images.unsplash.com/photo-1571536802807-30451e3955d8?w=400&h=300&fit=crop&auto=format',
+  },
+  {
+    name: 'Puri',
+    rating: 4.7,
+    reviews: 'Backend',
+    emoji: '🌊',
+    emojiBg: 'bg-cyan-400',
+    image: 'https://images.unsplash.com/photo-1587922546307-776227941871?w=400&h=300&fit=crop&auto=format',
+  },
+  {
+    name: 'Konark',
+    rating: 4.9,
+    reviews: 'Backend',
+    emoji: '☀️',
+    emojiBg: 'bg-yellow-400',
+    image: 'https://images.unsplash.com/photo-1620558601905-87b705d8f8c9?w=400&h=300&fit=crop&auto=format',
+  },
+  {
+    name: 'Jaipur',
+    rating: 4.7,
+    reviews: 'Backend',
+    emoji: '🏰',
+    emojiBg: 'bg-orange-400',
+    image: 'https://images.unsplash.com/photo-1477587458883-47145ed94245?w=400&h=300&fit=crop&auto=format',
+  },
+  {
+    name: 'Varanasi',
+    rating: 4.9,
+    reviews: 'Backend',
+    emoji: '🕉️',
+    emojiBg: 'bg-purple-400',
+    image: 'https://images.unsplash.com/photo-1561361058-c24cecae35ca?w=400&h=300&fit=crop&auto=format',
+  },
+];
+
+function getDestinationVisual(name: string, index: number) {
+  return backendVisuals.find((item) => name.toLowerCase().includes(item.name.toLowerCase()))
+    || defaultDestinations[index % defaultDestinations.length];
+}
+
 interface PopularDestinationsProps {
   destinations?: Destination[];
 }
@@ -107,9 +157,28 @@ export const PopularDestinations: React.FC<PopularDestinationsProps> = ({
   const [page, setPage] = useState(0);
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { data: apiDestinations = [] } = useQuery({
+    queryKey: ['destinations'],
+    queryFn: knowledgeApi.getDestinations,
+  });
+  const liveDestinations = apiDestinations.length > 0
+    ? apiDestinations.map((destination, index) => {
+        const visual = getDestinationVisual(destination.name, index);
+        return {
+          id: destination.id,
+          name: destination.name,
+          state: destination.region || destination.country,
+          rating: visual.rating,
+          reviews: knowledgeApi.isUsingFallbackData() ? 'Demo' : visual.reviews,
+          emoji: visual.emoji,
+          emojiBg: visual.emojiBg,
+          image: visual.image,
+        };
+      })
+    : destinations;
   const visible = 4;
-  const totalPages = Math.ceil(destinations.length / visible);
-  const shown = destinations.slice(page * visible, page * visible + visible);
+  const totalPages = Math.ceil(liveDestinations.length / visible);
+  const shown = liveDestinations.slice(page * visible, page * visible + visible);
 
   return (
     <div className="mb-6">
@@ -118,18 +187,22 @@ export const PopularDestinations: React.FC<PopularDestinationsProps> = ({
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('dashboard.popularDestinations', 'Popular Destinations')}</h2>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('dashboard.popularSubtitle', 'Most loved places across India')}</p>
         </div>
-        <button className="flex items-center gap-1 text-green-600 hover:text-green-700 font-semibold text-sm transition-colors">
+        <button
+          type="button"
+          onClick={() => navigate('/explore')}
+          className="flex items-center gap-1 text-green-600 hover:text-green-700 font-semibold text-sm transition-colors"
+        >
           <span>{t('dashboard.viewAll', 'View All')}</span>
           <ChevronRight size={16} />
         </button>
       </div>
 
       <div className="relative">
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4">
           {shown.map((dest) => (
             <div
               key={dest.id}
-              onClick={() => navigate(`/destination/${dest.name.toLowerCase()}`)}
+              onClick={() => navigate(`/destination/${dest.id}`)}
               className="bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-2xl hover:-translate-y-2 hover:border-orange-200 transition-all duration-300 cursor-pointer group"
             >
               {/* Photo */}

@@ -6,12 +6,12 @@ import { useAuth } from '../lib/AuthContext';
 import { ItineraryMap } from './MapsPage';
 import {
   MapPin, Calendar, Shield, AlertTriangle, Loader2, CheckCircle2,
-  Wallet, Map as MapIcon, List, Info
+  Wallet, Map as MapIcon, List, Info, Download
 } from 'lucide-react';
 
 export const TripDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { token } = useAuth();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'itinerary' | 'map' | 'budget'>('itinerary');
   const [actualCosts, setActualCosts] = useState<Record<string, number>>({});
 
@@ -36,9 +36,22 @@ export const TripDetailsPage: React.FC = () => {
 
   const { data: trip, isLoading, error } = useQuery({
     queryKey: ['trip', id],
-    queryFn: () => tripsApi.get(id!, token!),
-    enabled: !!id && !!token,
+    queryFn: () => tripsApi.get(id!),
+    enabled: !!id && !!user,
   });
+
+  const downloadTripPdf = async () => {
+    if (!trip) return;
+    const blob = await tripsApi.exportPdf(trip.id);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${trip.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'trip'}-itinerary.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
 
   if (isLoading) {
     return (
@@ -192,10 +205,10 @@ export const TripDetailsPage: React.FC = () => {
 
                   {/* Export PDF (Feature 6) */}
                   <button
-                    onClick={() => window.print()}
+                    onClick={downloadTripPdf}
                     className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-800 transition-colors"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    <Download className="w-4 h-4" />
                     Export as PDF
                   </button>
                 </div>

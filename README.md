@@ -5,7 +5,7 @@
 
 *Built for the **Smart India Hackathon (SIH) 2026***
 
-[![React](https://img.shields.io/badge/React-18-blue.svg?style=for-the-badge&logo=react)](https://reactjs.org/)
+[![React](https://img.shields.io/badge/React-19-blue.svg?style=for-the-badge&logo=react)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-24+-green.svg?style=for-the-badge&logo=nodedotjs)](https://nodejs.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-Database-3ECF8E.svg?style=for-the-badge&logo=supabase)](https://supabase.com/)
@@ -49,10 +49,11 @@ The AI must never fabricate critical travel information. If it cannot be verifie
 ## 🛠️ Tech Stack
 
 ### Frontend
-- **Framework**: React 18 + Vite
+- **Framework**: React 19 + Vite
 - **Language**: TypeScript
 - **Styling**: Vanilla CSS (Glassmorphism design system)
 - **i18n**: `react-i18next` for seamless language switching (en, hi, or)
+- **API Client**: Axios + Vite proxy to `/api/v1`
 
 ### Backend
 - **Framework**: Node.js + Express
@@ -61,6 +62,7 @@ The AI must never fabricate critical travel information. If it cannot be verifie
 - **Validation**: Zod (Runtime type safety & environment validation)
 - **AI/LLM**: Google Gemini (via `@google/genai`)
 - **Live APIs**: OpenRouteService (Travel matrices), Open-Meteo (Weather)
+- **Testing**: Vitest + Supertest E2E API flow tests
 
 ---
 
@@ -69,28 +71,61 @@ The AI must never fabricate critical travel information. If it cannot be verifie
 ### Prerequisites
 - Node.js (v24+)
 - Supabase account & project
+- Google Gemini API key
+- OpenRouteService API key
 
-### 1. Database Setup
-Run the SQL migrations located in `backend/prisma/schema.prisma` against your Supabase project to setup the geospatial database.
+### 1. Install Dependencies
+```bash
+cd backend
+npm install
 
-### 2. Environment Variables
-Create a `.env` file in the root directory:
+cd ../frontend
+npm install
+```
+
+### 2. Database Setup
+Prisma owns the backend schema.
+
+```bash
+cd backend
+npm run db:generate
+npm run db:push
+npm run db:seed
+```
+
+### 3. Environment Variables
+Keep backend secrets in `backend/.env`. The backend config also attempts to read a root `.env`, but `backend/.env` is the cleanest local setup.
+
+```bash
+cp .env.example backend/.env
+```
+
+Backend `backend/.env`:
 ```env
 SUPABASE_URL=your_supabase_url
 SUPABASE_ANON_KEY=your_supabase_publishable_or_anon_key
 DATABASE_URL=your_supabase_postgres_connection_string
 GEMINI_API_KEY=your_gemini_api_key
-ORS_API_KEY=your_openrouteservice_key
+ROUTING_API_KEY=your_openrouteservice_key
 JWT_SECRET=your_jwt_secret
+ACCESS_TOKEN_EXPIRY=15m
+REFRESH_TOKEN_EXPIRY_DAYS=7
+NODE_ENV=development
+CORS_ORIGIN=http://localhost:5173
+PORT=3001
 ```
 
-Create `frontend/.env.local`:
+Frontend public config belongs in `frontend/.env` or `frontend/.env.local`. Only use `VITE_` variables in frontend env files.
+
 ```env
+VITE_API_BASE_URL=/api/v1
 VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+VITE_SUPABASE_ANON_KEY=your_supabase_publishable_or_anon_key
 ```
 
-### 3. Google Auth Setup
+Do not put `DATABASE_URL`, `GEMINI_API_KEY`, `JWT_SECRET`, or Google OAuth secrets in frontend env files.
+
+### 4. Google Auth Setup
 In Google Cloud Console, create an OAuth client:
 - Application type: `Web application`
 - Authorized JavaScript origins:
@@ -110,21 +145,99 @@ In Supabase Dashboard → Authentication → URL Configuration:
   - `http://localhost:5173/dashboard`
   - your production dashboard URL
 
-### 4. Start the Backend
+### 5. Start the Backend
 ```bash
 cd backend
-npm install
 npm run dev
 ```
 *(The backend will run on http://localhost:3001)*
 
-### 5. Start the Frontend
+### 6. Start the Frontend
 ```bash
 cd frontend
-npm install
 npm run dev
 ```
 *(The frontend will run on http://localhost:5173)*
+
+The Vite dev server proxies `/api` to `http://localhost:3001`, so frontend calls to `/api/v1/...` reach the backend without CORS headaches.
+
+---
+
+## 🧪 Testing
+
+### Backend E2E API Flow
+The backend includes a Vitest + Supertest flow test at:
+
+```text
+backend/tests/api-flow.test.ts
+```
+
+It checks protected route rejection, invalid UUID validation, cookie auth, and the saved-trip lifecycle: create, read by UUID, publish/share, update, delete, and verify not found.
+
+Run it with the backend already started:
+
+```bash
+cd backend
+npm run dev
+```
+
+In another terminal:
+
+```bash
+cd backend
+API_TEST_BASE_URL=http://localhost:3001 API_TEST_BEARER_TOKEN=your_supabase_access_token npm test
+```
+
+If `API_TEST_BEARER_TOKEN` is omitted, auth-dependent tests are skipped and only unauthenticated checks run.
+
+### Frontend Build Check
+```bash
+cd frontend
+npm run build
+```
+
+---
+
+## 🔌 API & Docs
+
+- Health check: `GET http://localhost:3001/api/health`
+- Swagger UI: `http://localhost:3001/api/docs`
+- OpenAPI JSON: `http://localhost:3001/api/openapi.json`
+- API base path: `/api/v1`
+
+Protected routes accept either:
+- `Authorization: Bearer <supabase_access_token>`
+- `access_token=<supabase_access_token>` cookie
+
+Main backend route groups:
+
+```text
+/api/v1/users
+/api/v1/knowledge
+/api/v1/attractions
+/api/v1/live
+/api/v1/planner
+/api/v1/nlu
+/api/v1/feedback
+/api/v1/favorites
+/api/v1/trips
+/api/v1/services
+/api/v1/analytics
+/api/v1/search
+/api/v1/nearby
+/api/v1/local-businesses
+/api/v1/crowd
+/api/v1/emergency
+/api/v1/guide
+/api/v1/budget
+```
+
+Frontend API wrappers live in:
+
+```text
+frontend/src/api/client.ts
+frontend/src/api/services/
+```
 
 ---
 

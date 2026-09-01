@@ -71,17 +71,17 @@ function generateFallbackPlan(input: PlannerInput): ItineraryPlanResponse {
         endTime,
         travelBufferMinutesBefore: s === 1 ? 0 : 25,
         trustSummary: {
-          overall_status: 'VERIFIED',
-          warnings: [],
+          overall_status: 'UNVERIFIED',
+          warnings: ['Demo fallback plan generated while the backend planner was unavailable. Confirm critical details before visiting.'],
           facts: [
             {
               fact_id: `fact-${candidate.id}-hours`,
               fact_key: 'opening_hours',
               fact_value: { open: '08:00', close: '19:00' },
-              source_name: 'Official State Tourism Authority',
-              source_type: 'OFFICIAL_TOURISM',
-              verification_status: 'VERIFIED',
-              confidence: 0.98,
+              source_name: 'Demo fallback data',
+              source_type: 'AI_INFERENCE',
+              verification_status: 'UNVERIFIED',
+              confidence: 0.5,
               timestamp: new Date().toISOString(),
               last_checked: new Date().toISOString(),
             },
@@ -90,12 +90,12 @@ function generateFallbackPlan(input: PlannerInput): ItineraryPlanResponse {
               fact_key: 'accessibility',
               fact_value: {
                 wheelchair_accessible: candidate.accessibilityWheelchair,
-                notes: candidate.accessibilityNotes || 'Standard accessibility standards verified',
+                notes: candidate.accessibilityNotes || 'Demo accessibility note; confirm before visiting',
               },
-              source_name: 'Government Infrastructure Registry',
-              source_type: 'GOVERNMENT',
-              verification_status: 'VERIFIED',
-              confidence: 0.96,
+              source_name: 'Demo fallback data',
+              source_type: 'AI_INFERENCE',
+              verification_status: 'UNVERIFIED',
+              confidence: 0.5,
               timestamp: new Date().toISOString(),
               last_checked: new Date().toISOString(),
             },
@@ -109,13 +109,13 @@ function generateFallbackPlan(input: PlannerInput): ItineraryPlanResponse {
   }
 
   const warnings: string[] = [
-    'All listed monument timings and entrance fees verified against latest state records.',
+    'Demo fallback plan: backend planner was unavailable, so critical facts are marked unverified. Confirm details before visiting.',
   ];
 
   if (totalCapacity > pool.length && pool.length > 0) {
     const diff = totalCapacity - pool.length;
     warnings.push(
-      `Only ${pool.length} unique verified stops are available for this city. ${diff} slot(s) could not be filled without repeating attractions.`
+      `Only ${pool.length} unique demo stops are available for this city. ${diff} slot(s) could not be filled without repeating attractions.`
     );
   }
 
@@ -130,7 +130,7 @@ function generateFallbackPlan(input: PlannerInput): ItineraryPlanResponse {
           entityId: a.id,
           attractionName: a.name,
           reason: 'Excluded due to strict wheelchair accessibility filter (steps/uneven terrain present)',
-          verificationStatus: 'VERIFIED' as const,
+          verificationStatus: 'UNVERIFIED' as const,
         }))
     : [];
 

@@ -172,7 +172,7 @@ export const ItineraryTimeline: React.FC<ItineraryTimelineProps> = ({
                       className="inline-flex items-center gap-1 font-semibold text-emerald-700 hover:text-emerald-800 hover:underline"
                     >
                       <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                      <span>Audit {item.trustSummary.facts.length} Verified Facts</span>
+                      <span>Audit {item.trustSummary.facts.length} Facts</span>
                       <ChevronRight className="h-3 w-3" />
                     </button>
 

@@ -44,7 +44,7 @@ export const FactProvenanceDrawer: React.FC<FactProvenanceDrawerProps> = ({
               <ModalTitle className="text-xl">Evidence & Provenance Audit</ModalTitle>
             </div>
             <ModalDescription>
-              Verified facts and audit trails for <strong className="text-slate-900">{attractionName}</strong>
+              Fact statuses and audit trails for <strong className="text-slate-900">{attractionName}</strong>
             </ModalDescription>
           </ModalHeader>
 
