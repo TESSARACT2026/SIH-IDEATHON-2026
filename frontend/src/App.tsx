@@ -24,7 +24,9 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { DestinationPage } from './pages/DestinationPage';
 import { DestinationsPage } from './pages/DestinationsPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { GroupPlanPage } from './pages/GroupPlanPage';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
+import { VoiceNav } from './components/ui/VoiceNav';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -93,14 +95,16 @@ function App() {
         <AuthProvider>
           <Suspense
             fallback={
-              <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                <div className="text-slate-600 font-medium animate-pulse text-sm">
-                  Loading MargDarshak...
+              <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <h2 className="text-xl font-bold text-slate-700">Loading amazing places...</h2>
                 </div>
               </div>
             }
           >
             <BrowserRouter>
+              <VoiceNav />
               <Routes>
                 <Route path="/" element={<LoginPage />} />
                 <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
@@ -122,6 +126,7 @@ function App() {
                 <Route path="/destination/:id" element={<DestinationPage />} />
                 <Route path="/destinations" element={<DestinationsPage />} />
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                <Route path="/group/:code?" element={<GroupPlanPage />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
             </BrowserRouter>
