@@ -3,6 +3,29 @@ import { MainLayout } from '../components/layout/MainLayout';
 import { servicesApi, ExchangeRates, Holiday, SafetyPulse } from '../api/services/servicesApi';
 import { BookOpen, DollarSign, Calendar, Heart, ShieldAlert, Award } from 'lucide-react';
 
+const SUPPORTED_CURRENCIES = [
+  { code: 'USD', name: 'US Dollar' },
+  { code: 'EUR', name: 'Euro' },
+  { code: 'GBP', name: 'British Pound' },
+  { code: 'JPY', name: 'Japanese Yen' },
+  { code: 'AUD', name: 'Australian Dollar' },
+  { code: 'CAD', name: 'Canadian Dollar' },
+  { code: 'SGD', name: 'Singapore Dollar' },
+  { code: 'AED', name: 'UAE Dirham' },
+  { code: 'SAR', name: 'Saudi Riyal' },
+  { code: 'THB', name: 'Thai Baht' },
+  { code: 'MYR', name: 'Malaysian Ringgit' },
+  { code: 'IDR', name: 'Indonesian Rupiah' },
+  { code: 'NPR', name: 'Nepalese Rupee' },
+  { code: 'LKR', name: 'Sri Lankan Rupee' },
+  { code: 'BDT', name: 'Bangladeshi Taka' },
+  { code: 'CNY', name: 'Chinese Yuan' },
+  { code: 'HKD', name: 'Hong Kong Dollar' },
+  { code: 'CHF', name: 'Swiss Franc' },
+  { code: 'NZD', name: 'New Zealand Dollar' },
+  { code: 'ZAR', name: 'South African Rand' },
+] as const;
+
 export const TravelGuidePage: React.FC = () => {
   const [exchangeRates, setExchangeRates] = useState<ExchangeRates | null>(null);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
@@ -11,7 +34,7 @@ export const TravelGuidePage: React.FC = () => {
   const [safetyPulse, setSafetyPulse] = useState<SafetyPulse | null>(null);
   const [countryInfo, setCountryInfo] = useState<Record<string, any> | null>(null);
   const [inrAmount, setInrAmount] = useState<number>(100);
-  const [selectedCurrency, setSelectedCurrency] = useState<string>('usd');
+  const [selectedCurrency, setSelectedCurrency] = useState<string>('USD');
   const [conversionResult, setConversionResult] = useState<string>('');
 
   useEffect(() => {
@@ -47,11 +70,13 @@ export const TravelGuidePage: React.FC = () => {
     const rate = exchangeRates.inr[selectedCurrency.toLowerCase()];
     if (rate) {
       const converted = (inrAmount * rate).toFixed(2);
-      setConversionResult(`${inrAmount} INR = ${converted} ${selectedCurrency.toUpperCase()}`);
+      setConversionResult(`${inrAmount} INR = ${converted} ${selectedCurrency}`);
     }
   }, [inrAmount, selectedCurrency, exchangeRates]);
 
-  const currencyList = exchangeRates?.inr ? Object.keys(exchangeRates.inr).slice(0, 20) : ['usd', 'eur', 'gbp', 'jpy', 'aud', 'cad'];
+  const currencyList = SUPPORTED_CURRENCIES.filter((currency) =>
+    exchangeRates?.inr?.[currency.code.toLowerCase()] !== undefined
+  );
 
   return (
     <MainLayout>
@@ -166,10 +191,12 @@ export const TravelGuidePage: React.FC = () => {
                   <select
                     value={selectedCurrency}
                     onChange={(e) => setSelectedCurrency(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-orange-500 transition-colors text-sm font-semibold capitalize"
+                    className="w-full bg-slate-900 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-orange-500 transition-colors text-sm font-semibold"
                   >
-                    {currencyList.map(c => (
-                      <option key={c} value={c}>{c}</option>
+                    {(currencyList.length > 0 ? currencyList : SUPPORTED_CURRENCIES.slice(0, 6)).map((currency) => (
+                      <option key={currency.code} value={currency.code}>
+                        {currency.code} - {currency.name}
+                      </option>
                     ))}
                   </select>
                 </div>

@@ -153,14 +153,14 @@ export const DestinationPage: React.FC = () => {
             <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-3xl p-8 text-white shadow-lg">
               <h3 className="text-xl font-bold mb-6 opacity-90">Trip Estimation</h3>
               <div className="space-y-6">
-	                <div>
-	                  <p className="text-orange-100 text-sm font-medium mb-1">Ticket Total</p>
-	                  <div className="flex items-center gap-2 text-2xl font-black">
-	                    <IndianRupee size={24} />
-	                    {budgetLabel}
-	                  </div>
-	                  <p className="text-xs text-orange-200 mt-1">{budget?.includedCount || 0} priced item(s)</p>
-	                </div>
+                <div>
+                  <p className="text-orange-100 text-sm font-medium mb-1">Estimated Visit Cost</p>
+                  <div className="flex items-center gap-2 text-2xl font-black">
+                    <IndianRupee size={24} />
+                    {budgetLabel}
+                  </div>
+                  <p className="text-xs text-orange-200 mt-1">Approximate for listed attractions</p>
+                </div>
 
                 <div className="pt-4 border-t border-white/20">
                   <p className="text-orange-100 text-sm font-medium mb-1 flex items-center gap-2">
