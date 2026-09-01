@@ -52,6 +52,23 @@ export const feedbackLimiter = rateLimit({
 });
 
 /**
+ * Weather limiter — protects external weather API proxy endpoints.
+ * 30 requests per minute per IP.
+ */
+export const weatherLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Weather requests are rate limited. Please wait before refreshing again.',
+    },
+  },
+});
+
+/**
  * Auth limiter — aggressive rate limiting for login/register endpoints.
  * 5 requests per 15 minutes per IP.
  */
