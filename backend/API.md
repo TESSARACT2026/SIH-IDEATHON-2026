@@ -520,14 +520,18 @@ with warnings but excluded from the total.
 
 ### Attraction Suitability
 
-`GET /api/v1/attractions/konark-sun-temple/suitability?time=14:00&accessibilityWheelchair=true`
+`GET /api/v1/attractions/konark-sun-temple/suitability?time=14:00&accessibilityWheelchair=true&walkingToleranceMinutes=30`
 
 - `time`: required `HH:MM`.
-- `date`: optional ISO date-time.
-- `accessibilityWheelchair`: optional boolean.
+- `date`: optional ISO date-time; when present, forecast weather is checked for that day.
+- `accessibilityWheelchair`, `accessibilityVision`, `accessibilityHearing`,
+  `accessibilityCognitive`: optional booleans.
+- `walkingToleranceMinutes`: optional 5-240 minute tolerance.
+- `weatherCondition` and `maxTempC`: optional explicit weather override for
+  deterministic simulations/tests.
 
-Returns `recommended`, deterministic reasons, and alternatives when the place
-is not recommended.
+Returns `recommended`, deterministic reasons including "why not" constraints,
+weather metadata, and suitable alternatives when the place is not recommended.
 
 ### Scoring
 
@@ -556,8 +560,9 @@ sub-scores for the current user's saved trip.
 }
 ```
 
-Returns popular and responsible route plans with crowd/local-business exposure
-metrics.
+Returns popular and responsible route plans with crowd pressure, local-business
+exposure, travel-distance, environmental sensitivity, cultural sensitivity, and
+overall impact-score metrics.
 
 `GET /api/v1/scoring/trip-trust/:id`
 

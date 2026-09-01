@@ -153,6 +153,17 @@ export const verifiedTicketPrice = (facts: PlannerAttraction['facts']) => {
   return typeof amount === 'number' && Number.isFinite(amount) ? amount : null;
 };
 
+export const localBusinessProximityScore = (
+  attraction: { latitude: number; longitude: number },
+  localBusinesses: Array<{ latitude: number; longitude: number }>,
+) => localBusinesses.reduce((score, business) => {
+  const distance = Math.sqrt(
+    Math.pow(attraction.latitude - business.latitude, 2) +
+    Math.pow(attraction.longitude - business.longitude, 2)
+  );
+  return distance < 0.005 ? score + 1 : score;
+}, 0);
+
 export const riskRank: Record<VerificationStatus, number> = {
   [VerificationStatus.LIVE]: 0,
   [VerificationStatus.VERIFIED]: 1,
@@ -378,6 +389,7 @@ export const sortCandidates = async (
 
   const idOrder = new Map(orderedIds.map((id, index) => [id, index]));
   const interests = new Set(input.preferences.interests.map((interest) => interest.toLowerCase()));
+  const localBusinessWeight = overrides?.localBusinessPreferenceWeight ?? (input.preferences.localBusinessPreference ? 1 : 0);
 
   let filtered = attractions
     .filter((attraction) => !input.preferences.accessibilityWheelchair || attraction.accessibilityWheelchair);
@@ -403,6 +415,17 @@ export const sortCandidates = async (
     });
   }
 
+  const localBusinessScoreMap = new Map<string, number>();
+  if (localBusinessWeight > 0) {
+    const localBusinesses = await prisma.localBusiness.findMany({
+      where: { destinationId: input.destinationId, isLocallyOwned: true },
+      select: { latitude: true, longitude: true },
+    });
+    for (const attraction of filtered) {
+      localBusinessScoreMap.set(attraction.id, localBusinessProximityScore(attraction, localBusinesses));
+    }
+  }
+
   return filtered.sort((a, b) => {
     // Crowd avoidance scoring (for responsible routing)
     if (overrides?.crowdAvoidanceWeight) {
@@ -417,6 +440,13 @@ export const sortCandidates = async (
     const interestScoreA = interests.size === 0 ? 0 : a.categories.filter((category) => interests.has(category.toLowerCase())).length;
     const interestScoreB = interests.size === 0 ? 0 : b.categories.filter((category) => interests.has(category.toLowerCase())).length;
     if (interestScoreA !== interestScoreB) return interestScoreB - interestScoreA;
+
+    if (localBusinessWeight > 0) {
+      const localScoreA = localBusinessScoreMap.get(a.id) ?? 0;
+      const localScoreB = localBusinessScoreMap.get(b.id) ?? 0;
+      const localDiff = (localScoreB - localScoreA) * localBusinessWeight;
+      if (localDiff !== 0) return localDiff > 0 ? 1 : -1;
+    }
 
     // Budget preference: cheaper first when budget ceiling is set
     if (overrides?.budgetCeilingPerPerson !== undefined) {
