@@ -3,6 +3,7 @@ import { getLiveWeather, getWeatherForecast } from './weather.js';
 import { getRoute } from './routing.js';
 import { z } from 'zod';
 import { validate } from '../../shared/middleware/validate.js';
+import { weatherLimiter } from '../../shared/middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -27,7 +28,7 @@ const routeSchema = z.object({
   profile: z.enum(['driving-car', 'foot-walking']).default('driving-car'),
 }).strict();
 
-router.get('/weather', async (req, res, next) => {
+router.get('/weather', weatherLimiter, async (req, res, next) => {
   try {
     const { lat, lon } = coordSchema.parse(req.query);
     const data = await getLiveWeather(lat, lon);
@@ -37,7 +38,7 @@ router.get('/weather', async (req, res, next) => {
   }
 });
 
-router.get('/forecast', async (req, res, next) => {
+router.get('/forecast', weatherLimiter, async (req, res, next) => {
   try {
     const { lat, lon, startDate, endDate } = forecastSchema.parse(req.query);
     const data = await getWeatherForecast(lat, lon, startDate, endDate);

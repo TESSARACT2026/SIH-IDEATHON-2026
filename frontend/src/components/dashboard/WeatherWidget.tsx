@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Droplets, Wind, Gauge, Loader2 } from 'lucide-react';
+import { Droplets, Wind, Gauge, Loader2, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { liveApi } from '../../api/services/liveApi';
 
@@ -32,6 +32,8 @@ const getWeatherInfo = (code?: number, fallbackCondition = 'Partly Cloudy') => {
   return { emoji: '🌤️', label: fallbackCondition };
 };
 
+const WEATHER_REFRESH_MS = 20 * 60 * 1000;
+
 export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
   temperature = 28,
   condition = 'Partly Cloudy',
@@ -50,34 +52,43 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [hasLiveWeather, setHasLiveWeather] = useState(false);
 
-  useEffect(() => {
-    if ('geolocation' in navigator) {
-      setIsLoading(true);
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          try {
-            const { latitude, longitude } = position.coords;
-            const data = await liveApi.getLiveWeather(latitude, longitude);
-            setCurrentTemp(Math.round(data.temperature_celsius ?? data.temperature ?? temperature));
-            setCurrentWind(Math.round(data.windSpeed ?? windSpeed));
-            setCurrentHumidity(Math.round(data.humidity ?? humidity));
-            setCurrentWeatherCode(undefined);
-            setCurrentCondition(getWeatherInfo(undefined, data.condition || condition).label);
-            setCurrentLocation('Current Location');
-            setHasLiveWeather(true);
-          } catch (e) {
-            console.error("Failed to fetch weather", e);
-            setHasLiveWeather(false);
-          } finally {
-            setIsLoading(false);
-          }
-        },
-        (error) => {
-          console.error("Geolocation error:", error);
+  const refreshWeather = () => {
+    if (!('geolocation' in navigator)) return;
+
+    setIsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const data = await liveApi.getLiveWeather(latitude, longitude);
+          setCurrentTemp(Math.round(data.temperature_celsius ?? data.temperature ?? temperature));
+          setCurrentWind(Math.round(data.windSpeed ?? windSpeed));
+          setCurrentHumidity(Math.round(data.humidity ?? humidity));
+          setCurrentWeatherCode(undefined);
+          setCurrentCondition(getWeatherInfo(undefined, data.condition || condition).label);
+          setCurrentLocation('Current Location');
+          setHasLiveWeather(true);
+        } catch (e) {
+          console.error("Failed to fetch weather", e);
+          setHasLiveWeather(false);
+        } finally {
           setIsLoading(false);
         }
-      );
-    }
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+        setIsLoading(false);
+      }
+    );
+  };
+
+  useEffect(() => {
+    if (!('geolocation' in navigator)) return;
+
+    refreshWeather();
+    const intervalId = window.setInterval(refreshWeather, WEATHER_REFRESH_MS);
+
+    return () => window.clearInterval(intervalId);
   }, []);
 
   const weatherInfo = getWeatherInfo(currentWeatherCode, currentCondition);
@@ -92,6 +103,16 @@ export const WeatherWidget: React.FC<WeatherWidgetProps> = ({
             {hasLiveWeather ? t('dashboard.liveConditions', 'Live Conditions') : 'Default conditions'}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={refreshWeather}
+          disabled={isLoading}
+          title="Refresh weather"
+          aria-label="Refresh dashboard weather"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-500 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+        >
+          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
       {isLoading && (
