@@ -8,6 +8,7 @@
     "build": "prisma generate && tsc",
     "start": "node dist/server.js",
     "test": "vitest run",
+    "test:integration": "RUN_EXTERNAL_TESTS=1 RUN_E2E_TESTS=1 vitest run",
     "test:watch": "vitest",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
