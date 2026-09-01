@@ -95,6 +95,8 @@ export type ItineraryItem = {
 export type PlannerOverrides = {
   /** Force indoor-only or mixed candidates (e.g., rain scenario) */
   indoorOnly?: boolean;
+  /** Limit indoor-only behavior to these trip day numbers. Empty/omitted means all days. */
+  indoorOnlyDays?: number[];
   /** Override the day end time (e.g., "less time" scenario) */
   dayEndOverride?: string;
   /** Override the number of days */
@@ -134,6 +136,21 @@ export const paceLimit = (pace: PlannerPreferences['pace']) => {
   if (pace === 'RELAXED') return 2;
   if (pace === 'PACKED') return 5;
   return 3;
+};
+
+export const verifiedTicketPrice = (facts: PlannerAttraction['facts']) => {
+  const priceFact = facts.find(
+    (fact) =>
+      fact.factKey === 'ticket_price' &&
+      (fact.verificationStatus === VerificationStatus.VERIFIED || fact.verificationStatus === VerificationStatus.LIVE)
+  );
+
+  if (!priceFact || typeof priceFact.factValue !== 'object' || priceFact.factValue === null || Array.isArray(priceFact.factValue)) {
+    return null;
+  }
+
+  const amount = (priceFact.factValue as Record<string, unknown>).amount;
+  return typeof amount === 'number' && Number.isFinite(amount) ? amount : null;
 };
 
 export const riskRank: Record<VerificationStatus, number> = {
@@ -372,18 +389,12 @@ export const sortCandidates = async (
 
   // Override: budget ceiling — get ticket prices to sort by cost
   const ticketPriceMap = new Map<string, number>();
-  if (overrides?.budgetCeilingPerPerson) {
+  if (overrides?.budgetCeilingPerPerson !== undefined) {
     for (const attraction of filtered) {
-      const priceFact = attraction.facts.find(
-        (f) => f.factKey === 'ticket_price' && (f.verificationStatus === 'VERIFIED' || f.verificationStatus === 'LIVE')
-      );
-      if (priceFact && typeof priceFact.factValue === 'object' && priceFact.factValue !== null && !Array.isArray(priceFact.factValue)) {
-        const val = priceFact.factValue as Record<string, unknown>;
-        const amount = typeof val.amount === 'number' ? val.amount : null;
-        if (amount !== null) ticketPriceMap.set(attraction.id, amount);
-      }
+      const amount = verifiedTicketPrice(attraction.facts);
+      if (amount !== null) ticketPriceMap.set(attraction.id, amount);
     }
-    // Filter out attractions over the budget ceiling
+    // Filter out attractions that alone exceed the total budget ceiling.
     filtered = filtered.filter((a) => {
       const price = ticketPriceMap.get(a.id);
       // Keep if no verified price (we can't exclude what we don't know)
@@ -408,7 +419,7 @@ export const sortCandidates = async (
     if (interestScoreA !== interestScoreB) return interestScoreB - interestScoreA;
 
     // Budget preference: cheaper first when budget ceiling is set
-    if (overrides?.budgetCeilingPerPerson) {
+    if (overrides?.budgetCeilingPerPerson !== undefined) {
       const priceA = ticketPriceMap.get(a.id) ?? Infinity;
       const priceB = ticketPriceMap.get(b.id) ?? Infinity;
       if (priceA !== priceB) return priceA - priceB;
@@ -434,8 +445,15 @@ export async function generateItinerary(
   const tripStart = new Date(input.startDate);
   const effectiveDays = overrides?.daysOverride ?? input.days;
   const effectiveDayEnd = overrides?.dayEndOverride ?? DAY_END;
+  const indoorOnlyDays = new Set(overrides?.indoorOnlyDays ?? []);
+  const budgetCeiling = overrides?.budgetCeilingPerPerson;
+  let budgetSpentPerPerson = 0;
 
-  const candidates = await sortCandidates(input, warnings, overrides);
+  const candidates = await sortCandidates(
+    input,
+    warnings,
+    overrides ? { ...overrides, indoorOnly: Boolean(overrides.indoorOnly && indoorOnlyDays.size === 0) } : undefined,
+  );
 
   if (candidates.length === 0) {
     throw new AppError('No matching attractions found for these preferences', 404, 'NO_ATTRACTIONS');
@@ -450,12 +468,14 @@ export async function generateItinerary(
     let currentMinutes = timeToMinutes(DAY_START);
     let itemsToday = 0;
     let lastLocation: { latitude: number; longitude: number } | null = null;
+    const indoorOnlyToday = Boolean(overrides?.indoorOnly && (indoorOnlyDays.size === 0 || indoorOnlyDays.has(day)));
 
     while (itemsToday < maxItemsPerDay) {
       let scheduled = false;
 
       for (const candidate of candidates) {
         if (usedCandidateIds.has(candidate.id) || excludedCandidateIds.has(candidate.id)) continue;
+        if (indoorOnlyToday && candidate.indoorOutdoor !== 'indoor' && candidate.indoorOutdoor !== 'mixed') continue;
 
         const exclusion = exclusionFor(candidate, tripStart, overrides);
         if (exclusion) {
@@ -463,6 +483,9 @@ export async function generateItinerary(
           excludedCandidateIds.add(candidate.id);
           continue;
         }
+
+        const candidatePrice = verifiedTicketPrice(candidate.facts) ?? 0;
+        if (budgetCeiling !== undefined && budgetSpentPerPerson + candidatePrice > budgetCeiling) continue;
 
         const slot = await canSchedule(candidate, currentMinutes, lastLocation, input, effectiveDayEnd);
         if (!slot) continue;
@@ -485,6 +508,7 @@ export async function generateItinerary(
         currentMinutes = slot.endMinutes;
         lastLocation = { latitude: candidate.latitude, longitude: candidate.longitude };
         usedCandidateIds.add(candidate.id);
+        budgetSpentPerPerson += candidatePrice;
         itemsToday++;
         scheduled = true;
         break;

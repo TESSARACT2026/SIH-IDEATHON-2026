@@ -444,14 +444,18 @@ include owner IDs, owner email, or share tokens inside the document.
 
 Supported delta types:
 
-- `weather_change`: `condition` is `rain`, `extreme_heat`, or `storm`.
+- `weather_change`: `condition` is `rain`, `extreme_heat`, or `storm`; optional
+  `affectedDays` limits indoor substitutions to specific trip days.
 - `time_reduced`: accepts `newDayEnd` as `HH:MM` or `reduceDays`.
 - `crowd_increase`: accepts `strictFilter`.
-- `budget_change`: accepts `maxBudgetPerPerson`.
+- `budget_change`: accepts `maxBudgetPerPerson` as an absolute per-person
+  ceiling, or `decreaseByPerPerson` to reduce the current itinerary budget.
 
 Replanning uses the persisted planner input from generated trips. Old/manual
 trips without planner memory fall back to moderate pace, mixed transport, and
 no accessibility/interests constraints.
+Each successful replan updates the trip snapshot and stores a new itinerary
+version.
 
 Trip `:id` params must be UUIDs. `destinationId` accepts UUIDs and legacy
 frontend destination slugs.

@@ -10,7 +10,7 @@
  *   - weather_change: swap outdoor stops for indoor alternatives
  *   - time_reduced: shorten the day or reduce number of days
  *   - crowd_increase: exclude HIGH crowd attractions in addition to SEVERE
- *   - budget_change: re-run with a budget ceiling, prefer cheaper options
+ *   - budget_change: re-run with a budget ceiling or decrease, prefer cheaper options
  */
 
 import { Router } from 'express';
@@ -25,12 +25,22 @@ const router = Router();
 
 // ─── Constraint Delta Schema ─────────────────────────────────────────────────
 
+const budgetChangePayloadSchema = z.object({
+  /** New total ticket budget ceiling per person in INR */
+  maxBudgetPerPerson: z.number().min(0).optional(),
+  /** Reduce the current itinerary ticket budget by this amount per person in INR */
+  decreaseByPerPerson: z.number().min(0).optional(),
+}).strict().refine(
+  (payload) => payload.maxBudgetPerPerson !== undefined || payload.decreaseByPerPerson !== undefined,
+  { message: 'Provide maxBudgetPerPerson or decreaseByPerPerson' },
+);
+
 const constraintDeltaSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('weather_change'),
     payload: z.object({
       condition: z.enum(['rain', 'extreme_heat', 'storm']),
-      affectedDays: z.array(z.number().int().min(1)).optional(),
+      affectedDays: z.array(z.number().int().min(1).max(14)).optional(),
     }).strict(),
   }),
   z.object({
@@ -49,12 +59,10 @@ const constraintDeltaSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('budget_change'),
-    payload: z.object({
-      /** New budget ceiling per person in INR */
-      maxBudgetPerPerson: z.number().min(0),
-    }).strict(),
+    payload: budgetChangePayloadSchema,
   }),
-]).and(z.object({ type: z.string() }));
+]);
+type ConstraintDelta = z.infer<typeof constraintDeltaSchema>;
 
 const replanSchema = z.object({
   delta: constraintDeltaSchema,
@@ -88,20 +96,47 @@ const storedPlannerInputSchema = z.object({
 
 // ─── Delta → Overrides mapping ──────────────────────────────────────────────
 
-function deltaToOverrides(delta: z.infer<typeof constraintDeltaSchema>): PlannerOverrides {
+export function estimateSnapshotBudgetPerPerson(items: unknown[]): number {
+  return items.reduce<number>((sum, item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return sum;
+
+    const trustSummary = (item as Record<string, unknown>).trustSummary;
+    if (!trustSummary || typeof trustSummary !== 'object' || Array.isArray(trustSummary)) return sum;
+
+    const facts = (trustSummary as Record<string, unknown>).facts;
+    if (!Array.isArray(facts)) return sum;
+
+    const priceFact = facts.find((fact) => {
+      if (!fact || typeof fact !== 'object' || Array.isArray(fact)) return false;
+      const record = fact as Record<string, unknown>;
+      return record.fact_key === 'ticket_price' &&
+        (record.verification_status === 'VERIFIED' || record.verification_status === 'LIVE');
+    });
+
+    if (!priceFact || typeof priceFact !== 'object' || Array.isArray(priceFact)) return sum;
+    const factValue = (priceFact as Record<string, unknown>).fact_value;
+    if (!factValue || typeof factValue !== 'object' || Array.isArray(factValue)) return sum;
+
+    const amount = (factValue as Record<string, unknown>).amount;
+    return typeof amount === 'number' && Number.isFinite(amount) ? sum + amount : sum;
+  }, 0);
+}
+
+export function deltaToOverrides(delta: ConstraintDelta, currentBudgetPerPerson = 0): PlannerOverrides {
   switch (delta.type) {
     case 'weather_change':
-      return { indoorOnly: true };
+      return { indoorOnly: true, indoorOnlyDays: delta.payload.affectedDays };
     case 'time_reduced':
       return {
         dayEndOverride: delta.payload.newDayEnd,
-        daysOverride: delta.payload.reduceDays ? undefined : undefined,
-        // reduceDays handled below
       };
     case 'crowd_increase':
       return { strictCrowdFilter: delta.payload.strictFilter };
     case 'budget_change':
-      return { budgetCeilingPerPerson: delta.payload.maxBudgetPerPerson };
+      return {
+        budgetCeilingPerPerson: delta.payload.maxBudgetPerPerson ??
+          Math.max(0, currentBudgetPerPerson - (delta.payload.decreaseByPerPerson ?? 0)),
+      };
     default:
       return {};
   }
@@ -173,14 +208,6 @@ router.post('/:id/itinerary/replan', requireAuth, async (req, res, next) => {
       fallbackPlannerInput,
     );
 
-    // Compute overrides from the delta
-    const overrides = deltaToOverrides(delta);
-
-    // Handle reduceDays for time_reduced
-    if (delta.type === 'time_reduced' && delta.payload.reduceDays) {
-      overrides.daysOverride = Math.max(1, tripDays - delta.payload.reduceDays);
-    }
-
     // Capture the old itinerary for diff
     const oldItems = snapshot
       ? (Array.isArray((snapshot as Record<string, unknown>).itineraryItems) 
@@ -188,8 +215,17 @@ router.post('/:id/itinerary/replan', requireAuth, async (req, res, next) => {
           : [])
       : [];
 
+    // Compute overrides from the delta
+    const overrides = deltaToOverrides(delta, estimateSnapshotBudgetPerPerson(oldItems));
+
+    // Handle reduceDays for time_reduced
+    if (delta.type === 'time_reduced' && delta.payload.reduceDays) {
+      overrides.daysOverride = Math.max(1, tripDays - delta.payload.reduceDays);
+    }
+
     // Generate new itinerary using the SAME deterministic engine
     const newPlan: PlanResult = await generateItinerary(plannerInput, overrides);
+    const newPlanSnapshot = { ...newPlan, plannerInput, replanDelta: delta };
 
     // Build diff summary
     const oldNames = new Set(
@@ -204,22 +240,52 @@ router.post('/:id/itinerary/replan', requireAuth, async (req, res, next) => {
       added: added.map((i) => ({ name: i.attractionName, day: i.dayNumber, time: `${i.startTime}-${i.endTime}` })),
       removed: removed.map((i) => ({ name: i.attractionName ?? 'Unknown', entityId: i.entityId })),
       deltaApplied: delta,
+      constraintsApplied: overrides,
     };
 
-    // Update the trip snapshot with the new plan
-    await prisma.trip.update({
-      where: { id },
-      data: {
-        plannerInput: plannerInput as unknown as Prisma.InputJsonValue,
-        itinerarySnapshot: newPlan as unknown as Prisma.InputJsonValue,
-      },
+    const savedItinerary = await prisma.$transaction(async (tx) => {
+      await tx.trip.update({
+        where: { id },
+        data: {
+          plannerInput: plannerInput as unknown as Prisma.InputJsonValue,
+          itinerarySnapshot: newPlanSnapshot as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      const itinerary = await tx.itinerary.create({
+        data: {
+          tripId: id,
+          plannerInput: plannerInput as unknown as Prisma.InputJsonValue,
+          rawPlan: newPlanSnapshot as unknown as Prisma.InputJsonValue,
+          validated: true,
+        },
+      });
+
+      if (newPlan.itineraryItems.length > 0) {
+        await tx.itineraryItem.createMany({
+          data: newPlan.itineraryItems.map((item) => ({
+            itineraryId: itinerary.id,
+            dayNumber: item.dayNumber,
+            sequence: item.sequence,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            entityType: item.entityType,
+            entityId: item.entityId,
+            travelBufferMinutesBefore: item.travelBufferMinutesBefore,
+            trustSummary: item.trustSummary as Prisma.InputJsonValue,
+          })),
+        });
+      }
+
+      return itinerary;
     });
 
     res.json({
       data: {
         oldItemCount: oldItems.length,
-        newPlan,
+        newPlan: newPlanSnapshot,
         diff,
+        savedItineraryId: savedItinerary.id,
       },
     });
   } catch (err) {

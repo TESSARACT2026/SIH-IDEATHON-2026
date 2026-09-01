@@ -186,7 +186,11 @@ export const openApiDocument = {
             required: ['type', 'payload'],
             properties: {
               type: { type: 'string', enum: ['weather_change', 'time_reduced', 'crowd_increase', 'budget_change'] },
-              payload: { type: 'object', additionalProperties: true },
+              payload: {
+                type: 'object',
+                additionalProperties: true,
+                description: 'weather_change supports affectedDays; budget_change supports maxBudgetPerPerson or decreaseByPerPerson.',
+              },
             },
           },
         },
