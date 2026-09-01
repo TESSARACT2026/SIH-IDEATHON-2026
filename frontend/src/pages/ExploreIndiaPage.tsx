@@ -23,20 +23,22 @@ export const ExploreIndia: React.FC = () => {
     setSearchQuery(searchParams.get('q') || '');
   }, [searchParams]);
 
-  useEffect(() => {
-    if (!selectedDestinationId && destinations.length > 0) {
-      setSelectedDestinationId(destinations[0].id);
-    }
-  }, [destinations, selectedDestinationId]);
-
   const { data: attractions = [], isLoading } = useQuery({
-    queryKey: ['explore-attractions', selectedDestinationId, selectedCategory, wheelchairOnly, searchQuery],
-    queryFn: () => knowledgeApi.getAttractionsByDestination(selectedDestinationId, {
-      categories: selectedCategory || undefined,
-      accessibilityWheelchair: wheelchairOnly || undefined,
-      search: searchQuery || undefined,
-    }),
-    enabled: !!selectedDestinationId && searchQuery.trim().length < 2,
+    queryKey: ['explore-attractions', selectedDestinationId, selectedCategory, wheelchairOnly, searchQuery, destinations.map((item) => item.id).join(',')],
+    queryFn: async () => {
+      const filters = {
+        categories: selectedCategory || undefined,
+        accessibilityWheelchair: wheelchairOnly || undefined,
+        search: searchQuery || undefined,
+      };
+      if (selectedDestinationId) return knowledgeApi.getAttractionsByDestination(selectedDestinationId, filters);
+
+      const groups = await Promise.all(
+        destinations.map((destination) => knowledgeApi.getAttractionsByDestination(destination.id, filters))
+      );
+      return groups.flat();
+    },
+    enabled: destinations.length > 0 && searchQuery.trim().length < 2,
   });
 
   const { data: searchResults = [] } = useQuery({
@@ -110,6 +112,7 @@ export const ExploreIndia: React.FC = () => {
               onChange={(e) => setSelectedDestinationId(e.target.value)}
               className="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white"
             >
+              <option value="">Select destination (showing all)</option>
               {destinations.map((destination) => (
                 <option key={destination.id} value={destination.id}>
                   {destination.name}, {destination.region || destination.country}

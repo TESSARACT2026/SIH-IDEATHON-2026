@@ -11,7 +11,6 @@ interface FavoriteAttraction {
   location: string;
   category: string;
   rating: number;
-  emoji: string;
   savedDate: string;
 }
 
@@ -34,16 +33,6 @@ export const FavoritesPage: React.FC = () => {
     removeMutation.mutate(id);
   };
 
-  const getEmojiForCategory = (categories: string[]) => {
-    if (!categories || categories.length === 0) return '🏛️';
-    const cat = categories[0].toLowerCase();
-    if (cat.includes('heritage') || cat.includes('monument')) return '🏰';
-    if (cat.includes('nature') || cat.includes('park')) return '🌲';
-    if (cat.includes('museum')) return '🖼️';
-    if (cat.includes('temple') || cat.includes('religion')) return '🙏';
-    return '🏛️';
-  };
-
   return (
     <MainLayout>
       <div className="max-w-6xl mx-auto">
@@ -62,7 +51,7 @@ export const FavoritesPage: React.FC = () => {
                 className="bg-white rounded-2xl border border-gray-200 hover:shadow-xl transition-all duration-300 overflow-hidden group"
               >
                 <div className="relative h-40 bg-gradient-to-br from-orange-200 to-amber-100 flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform">
-                  <span className="text-5xl">{getEmojiForCategory(favorite.attraction.categories)}</span>
+                  <MapPin size={48} className="text-orange-500" />
                   <button
                     onClick={() => removeFavorite(favorite.attractionId)}
                     disabled={removeMutation.isPending}
