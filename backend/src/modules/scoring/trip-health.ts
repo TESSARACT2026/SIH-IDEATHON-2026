@@ -22,6 +22,7 @@ import { AppError } from '../../shared/middleware/errorHandler.js';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { getWeatherForecast, type WeatherForecastDay } from '../live-data/weather.js';
 import { emergencyContactBundle } from '../emergency/index.js';
+import type { ConstraintDelta } from '../planner/replan.js';
 
 const router = Router();
 
@@ -54,7 +55,31 @@ type TripHealthResult = {
   score: number; // 0-100
   label: string;
   subScores: SubScore[];
+  mitigation: TripHealthMitigation;
   computedAt: string;
+};
+
+type TripHealthMitigationAction = {
+  category: string;
+  priority: 'high' | 'medium';
+  reason: string;
+  recommendation: string;
+  replan?: {
+    method: 'POST';
+    path: string;
+    body: { delta: ConstraintDelta };
+  };
+  followUp?: {
+    method: 'GET';
+    path: string;
+  };
+};
+
+type TripHealthMitigation = {
+  riskThreshold: number;
+  riskCrossed: boolean;
+  shouldReplan: boolean;
+  actions: TripHealthMitigationAction[];
 };
 
 type StoredUserPreference = {
@@ -92,6 +117,105 @@ function scoreLabel(score: number): string {
   if (score >= 60) return 'Good';
   if (score >= 40) return 'Fair';
   return 'At Risk';
+}
+
+const MITIGATION_RISK_THRESHOLD = 70;
+
+function firstFactor(subScore: SubScore): string {
+  return subScore.factors[0]?.description ?? `${subScore.category} risk detected`;
+}
+
+function mitigationPriority(subScore: SubScore): TripHealthMitigationAction['priority'] {
+  return subScore.score < 50 ? 'high' : 'medium';
+}
+
+function weatherConditionFromFactors(factors: SubScore['factors']): 'rain' | 'extreme_heat' | 'storm' {
+  const text = factors.map((factor) => factor.description).join(' ').toLowerCase();
+  if (text.includes('extreme heat')) return 'extreme_heat';
+  if (text.includes('storm') || text.includes('thunder') || text.includes('snow')) return 'storm';
+  return 'rain';
+}
+
+function replanAction(
+  subScore: SubScore,
+  recommendation: string,
+  delta: ConstraintDelta,
+  tripId: string,
+): TripHealthMitigationAction {
+  return {
+    category: subScore.category,
+    priority: mitigationPriority(subScore),
+    reason: firstFactor(subScore),
+    recommendation,
+    replan: {
+      method: 'POST',
+      path: `/api/v1/trips/${tripId}/itinerary/replan`,
+      body: { delta },
+    },
+  };
+}
+
+export function mitigationForTripHealth(
+  score: number,
+  subScores: SubScore[],
+  tripId = ':id',
+): TripHealthMitigation {
+  const riskySubScores = subScores.filter((subScore) => subScore.score < MITIGATION_RISK_THRESHOLD);
+  const actions = riskySubScores.map<TripHealthMitigationAction>((subScore) => {
+    switch (subScore.category) {
+      case 'weather':
+        return replanAction(
+          subScore,
+          'Move weather-sensitive stops to indoor alternatives.',
+          { type: 'weather_change', payload: { condition: weatherConditionFromFactors(subScore.factors) } },
+          tripId,
+        );
+      case 'crowd':
+        return replanAction(
+          subScore,
+          'Avoid high-crowd stops and prefer calmer alternatives.',
+          { type: 'crowd_increase', payload: { strictFilter: true } },
+          tripId,
+        );
+      case 'transport':
+        return replanAction(
+          subScore,
+          'Shorten the active day so the planner can preserve route buffers.',
+          { type: 'time_reduced', payload: { newDayEnd: '15:00' } },
+          tripId,
+        );
+      case 'emergency':
+        return {
+          category: subScore.category,
+          priority: mitigationPriority(subScore),
+          reason: firstFactor(subScore),
+          recommendation: 'Review destination emergency contacts before departure.',
+          followUp: { method: 'GET', path: '/api/v1/emergency' },
+        };
+      case 'data_quality':
+        return {
+          category: subScore.category,
+          priority: mitigationPriority(subScore),
+          reason: firstFactor(subScore),
+          recommendation: 'Review trip trust details before relying on disputed itinerary facts.',
+          followUp: { method: 'GET', path: `/api/v1/scoring/trip-trust/${tripId}` },
+        };
+      default:
+        return {
+          category: subScore.category,
+          priority: mitigationPriority(subScore),
+          reason: firstFactor(subScore),
+          recommendation: 'Review the flagged itinerary stops before travel.',
+        };
+    }
+  });
+
+  return {
+    riskThreshold: MITIGATION_RISK_THRESHOLD,
+    riskCrossed: score < MITIGATION_RISK_THRESHOLD || riskySubScores.length > 0,
+    shouldReplan: actions.some((action) => Boolean(action.replan)),
+    actions,
+  };
 }
 
 function objectValue(value: unknown): Record<string, unknown> | null {
@@ -559,6 +683,7 @@ router.get('/trip-health/:id', requireAuth, async (req, res, next) => {
       score,
       label: scoreLabel(score),
       subScores,
+      mitigation: mitigationForTripHealth(score, subScores, id),
       computedAt: new Date().toISOString(),
     };
 

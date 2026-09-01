@@ -62,7 +62,7 @@ const constraintDeltaSchema = z.discriminatedUnion('type', [
     payload: budgetChangePayloadSchema,
   }),
 ]);
-type ConstraintDelta = z.infer<typeof constraintDeltaSchema>;
+export type ConstraintDelta = z.infer<typeof constraintDeltaSchema>;
 
 const replanSchema = z.object({
   delta: constraintDeltaSchema,

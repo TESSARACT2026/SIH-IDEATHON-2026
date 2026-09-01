@@ -579,7 +579,10 @@ weather metadata, and suitable alternatives when the place is not recommended.
 
 Requires auth. Computes weather, crowd, transport/routing,
 closure/sensitivity, accessibility, emergency-readiness, and data-quality
-sub-scores for the current user's saved trip.
+sub-scores for the current user's saved trip. The response includes
+`mitigation.riskCrossed`, `mitigation.shouldReplan`, and deterministic action
+objects; weather, crowd, and transport actions include a ready
+`POST /api/v1/trips/:id/itinerary/replan` delta.
 
 `POST /api/v1/scoring/tourism-impact`
 
