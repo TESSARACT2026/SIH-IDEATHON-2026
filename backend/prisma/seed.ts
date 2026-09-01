@@ -15,20 +15,148 @@
  */
 
 import { PrismaClient, VerificationStatus, SourceType, CrowdLevel } from '@prisma/client';
+import dotenv from 'dotenv';
+import path from 'path';
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 
 const prisma = new PrismaClient();
 
+const sourceIdRenames = [
+  ['src-odisha-tourism', '00000000-0000-4000-8000-000000000101'],
+  ['src-asi', '00000000-0000-4000-8000-000000000102'],
+  ['src-rajasthan-tourism', '00000000-0000-4000-8000-000000000103'],
+  ['src-up-tourism', '00000000-0000-4000-8000-000000000104'],
+  ['src-community', '00000000-0000-4000-8000-000000000105'],
+] as const;
+
+const destinationIdRenames = [
+  ['dest-bhubaneswar', '00000000-0000-4000-8000-000000001001'],
+  ['bhubaneswar-odisha', '00000000-0000-4000-8000-000000001001'],
+  ['dest-puri', '00000000-0000-4000-8000-000000001002'],
+  ['puri-odisha', '00000000-0000-4000-8000-000000001002'],
+  ['dest-konark', '00000000-0000-4000-8000-000000001003'],
+  ['konark-odisha', '00000000-0000-4000-8000-000000001003'],
+  ['dest-jaipur', '00000000-0000-4000-8000-000000001004'],
+  ['jaipur-rajasthan', '00000000-0000-4000-8000-000000001004'],
+  ['dest-varanasi', '00000000-0000-4000-8000-000000001005'],
+  ['varanasi-up', '00000000-0000-4000-8000-000000001005'],
+] as const;
+
+const attractionIdRenames = [
+  ['attr-lingaraj', '00000000-0000-4000-8000-000000002001'],
+  ['lingaraj-temple', '00000000-0000-4000-8000-000000002001'],
+  ['attr-caves', '00000000-0000-4000-8000-000000002002'],
+  ['udayagiri-khandagiri', '00000000-0000-4000-8000-000000002002'],
+  ['attr-odisha-museum', '00000000-0000-4000-8000-000000002003'],
+  ['odisha-state-museum', '00000000-0000-4000-8000-000000002003'],
+  ['attr-dhauli', '00000000-0000-4000-8000-000000002004'],
+  ['dhauli-shanti-stupa', '00000000-0000-4000-8000-000000002004'],
+  ['attr-mukteshwar', '00000000-0000-4000-8000-000000002005'],
+  ['mukteshwar-temple', '00000000-0000-4000-8000-000000002005'],
+  ['attr-nandankanan', '00000000-0000-4000-8000-000000002006'],
+  ['nandankanan-zoo', '00000000-0000-4000-8000-000000002006'],
+  ['attr-rajarani', '00000000-0000-4000-8000-000000002007'],
+  ['rajarani-temple', '00000000-0000-4000-8000-000000002007'],
+  ['attr-ekamra-haat', '00000000-0000-4000-8000-000000002008'],
+  ['ekamra-haat', '00000000-0000-4000-8000-000000002008'],
+  ['attr-jagannath', '00000000-0000-4000-8000-000000002009'],
+  ['jagannath-temple', '00000000-0000-4000-8000-000000002009'],
+  ['attr-golden-beach', '00000000-0000-4000-8000-000000002010'],
+  ['golden-beach-puri', '00000000-0000-4000-8000-000000002010'],
+  ['attr-swargadwar', '00000000-0000-4000-8000-000000002011'],
+  ['puri-beach-market', '00000000-0000-4000-8000-000000002011'],
+  ['attr-chilika', '00000000-0000-4000-8000-000000002012'],
+  ['chilika-lake', '00000000-0000-4000-8000-000000002012'],
+  ['attr-raghurajpur', '00000000-0000-4000-8000-000000002013'],
+  ['raghurajpur-village', '00000000-0000-4000-8000-000000002013'],
+  ['attr-gundicha', '00000000-0000-4000-8000-000000002014'],
+  ['gundicha-temple', '00000000-0000-4000-8000-000000002014'],
+  ['attr-sun-temple', '00000000-0000-4000-8000-000000002015'],
+  ['sun-temple-konark', '00000000-0000-4000-8000-000000002015'],
+  ['attr-konark-beach', '00000000-0000-4000-8000-000000002016'],
+  ['konark-beach', '00000000-0000-4000-8000-000000002016'],
+  ['attr-konark-museum', '00000000-0000-4000-8000-000000002017'],
+  ['konark-museum', '00000000-0000-4000-8000-000000002017'],
+  ['attr-ramchandi', '00000000-0000-4000-8000-000000002018'],
+  ['ramchandi-temple', '00000000-0000-4000-8000-000000002018'],
+  ['attr-amber-fort', '00000000-0000-4000-8000-000000002019'],
+  ['amber-fort', '00000000-0000-4000-8000-000000002019'],
+  ['attr-hawa-mahal', '00000000-0000-4000-8000-000000002020'],
+  ['hawa-mahal', '00000000-0000-4000-8000-000000002020'],
+  ['attr-city-palace-jaipur', '00000000-0000-4000-8000-000000002021'],
+  ['city-palace-jaipur', '00000000-0000-4000-8000-000000002021'],
+  ['attr-jantar-mantar', '00000000-0000-4000-8000-000000002022'],
+  ['jantar-mantar', '00000000-0000-4000-8000-000000002022'],
+  ['attr-nahargarh', '00000000-0000-4000-8000-000000002023'],
+  ['nahargarh-fort', '00000000-0000-4000-8000-000000002023'],
+  ['attr-jaipur-bazaar', '00000000-0000-4000-8000-000000002024'],
+  ['jaipur-bazaar', '00000000-0000-4000-8000-000000002024'],
+  ['attr-albert-hall', '00000000-0000-4000-8000-000000002025'],
+  ['albert-hall-museum', '00000000-0000-4000-8000-000000002025'],
+  ['attr-jal-mahal', '00000000-0000-4000-8000-000000002026'],
+  ['jal-mahal', '00000000-0000-4000-8000-000000002026'],
+  ['attr-dashashwamedh', '00000000-0000-4000-8000-000000002027'],
+  ['dashashwamedh-ghat', '00000000-0000-4000-8000-000000002027'],
+  ['attr-kashi-vishwanath', '00000000-0000-4000-8000-000000002028'],
+  ['kashi-vishwanath-temple', '00000000-0000-4000-8000-000000002028'],
+  ['attr-sarnath', '00000000-0000-4000-8000-000000002029'],
+  ['sarnath', '00000000-0000-4000-8000-000000002029'],
+  ['attr-bhu', '00000000-0000-4000-8000-000000002030'],
+  ['banaras-hindu-university', '00000000-0000-4000-8000-000000002030'],
+  ['attr-ramnagar-fort', '00000000-0000-4000-8000-000000002031'],
+  ['ramnagar-fort', '00000000-0000-4000-8000-000000002031'],
+  ['attr-assi-ghat', '00000000-0000-4000-8000-000000002032'],
+  ['assi-ghat', '00000000-0000-4000-8000-000000002032'],
+  ['attr-vishwanath-gali', '00000000-0000-4000-8000-000000002033'],
+  ['vishwanath-lane', '00000000-0000-4000-8000-000000002033'],
+] as const;
+
+async function renameLegacyIds() {
+  for (const [from, to] of sourceIdRenames) {
+    const [legacy, current] = await Promise.all([
+      prisma.source.findUnique({ where: { id: from }, select: { id: true } }),
+      prisma.source.findUnique({ where: { id: to }, select: { id: true } }),
+    ]);
+    if (legacy && !current) {
+      await prisma.source.update({ where: { id: from }, data: { id: to } });
+    }
+  }
+
+  for (const [from, to] of destinationIdRenames) {
+    const [legacy, current] = await Promise.all([
+      prisma.destination.findUnique({ where: { id: from }, select: { id: true } }),
+      prisma.destination.findUnique({ where: { id: to }, select: { id: true } }),
+    ]);
+    if (legacy && !current) {
+      await prisma.destination.update({ where: { id: from }, data: { id: to } });
+    }
+  }
+
+  for (const [from, to] of attractionIdRenames) {
+    const [legacy, current] = await Promise.all([
+      prisma.attraction.findUnique({ where: { id: from }, select: { id: true } }),
+      prisma.attraction.findUnique({ where: { id: to }, select: { id: true } }),
+    ]);
+    if (legacy && !current) {
+      await prisma.attraction.update({ where: { id: from }, data: { id: to } });
+    }
+  }
+}
+
 async function main() {
   console.log('🌱 Starting MargDarshak seed...\n');
+  await renameLegacyIds();
 
   // ─── Sources ──────────────────────────────────────────────────────────────
   console.log('📚 Creating sources...');
 
   const srcOdishaTourism = await prisma.source.upsert({
-    where: { id: 'src-odisha-tourism' },
+    where: { id: '00000000-0000-4000-8000-000000000101' },
     update: {},
     create: {
-      id: 'src-odisha-tourism',
+      id: '00000000-0000-4000-8000-000000000101',
       name: 'Odisha Tourism Official',
       sourceType: SourceType.OFFICIAL_TOURISM,
       url: 'https://odishatourism.gov.in',
@@ -37,10 +165,10 @@ async function main() {
   });
 
   const srcASI = await prisma.source.upsert({
-    where: { id: 'src-asi' },
+    where: { id: '00000000-0000-4000-8000-000000000102' },
     update: {},
     create: {
-      id: 'src-asi',
+      id: '00000000-0000-4000-8000-000000000102',
       name: 'Archaeological Survey of India (ASI)',
       sourceType: SourceType.GOVERNMENT,
       url: 'https://asi.nic.in',
@@ -49,10 +177,10 @@ async function main() {
   });
 
   const srcRajasthanTourism = await prisma.source.upsert({
-    where: { id: 'src-rajasthan-tourism' },
+    where: { id: '00000000-0000-4000-8000-000000000103' },
     update: {},
     create: {
-      id: 'src-rajasthan-tourism',
+      id: '00000000-0000-4000-8000-000000000103',
       name: 'Rajasthan Tourism Official',
       sourceType: SourceType.OFFICIAL_TOURISM,
       url: 'https://tourism.rajasthan.gov.in',
@@ -61,10 +189,10 @@ async function main() {
   });
 
   const srcUPTourism = await prisma.source.upsert({
-    where: { id: 'src-up-tourism' },
+    where: { id: '00000000-0000-4000-8000-000000000104' },
     update: {},
     create: {
-      id: 'src-up-tourism',
+      id: '00000000-0000-4000-8000-000000000104',
       name: 'UP Tourism Official',
       sourceType: SourceType.OFFICIAL_TOURISM,
       url: 'https://uptourism.gov.in',
@@ -73,10 +201,10 @@ async function main() {
   });
 
   const srcCommunity = await prisma.source.upsert({
-    where: { id: 'src-community' },
+    where: { id: '00000000-0000-4000-8000-000000000105' },
     update: {},
     create: {
-      id: 'src-community',
+      id: '00000000-0000-4000-8000-000000000105',
       name: 'Travel Community Reports (Aggregated)',
       sourceType: SourceType.COMMUNITY,
       reliabilityTier: 4,
@@ -87,10 +215,10 @@ async function main() {
   console.log('🗺️  Creating destinations...');
 
   const bhubaneswar = await prisma.destination.upsert({
-    where: { id: 'dest-bhubaneswar' },
+    where: { id: '00000000-0000-4000-8000-000000001001' },
     update: {},
     create: {
-      id: 'dest-bhubaneswar',
+      id: '00000000-0000-4000-8000-000000001001',
       name: 'Bhubaneswar',
       region: 'Odisha',
       latitude: 20.2961,
@@ -100,10 +228,10 @@ async function main() {
   });
 
   const puri = await prisma.destination.upsert({
-    where: { id: 'dest-puri' },
+    where: { id: '00000000-0000-4000-8000-000000001002' },
     update: {},
     create: {
-      id: 'dest-puri',
+      id: '00000000-0000-4000-8000-000000001002',
       name: 'Puri',
       region: 'Odisha',
       latitude: 19.8135,
@@ -113,10 +241,10 @@ async function main() {
   });
 
   const konark = await prisma.destination.upsert({
-    where: { id: 'dest-konark' },
+    where: { id: '00000000-0000-4000-8000-000000001003' },
     update: {},
     create: {
-      id: 'dest-konark',
+      id: '00000000-0000-4000-8000-000000001003',
       name: 'Konark',
       region: 'Odisha',
       latitude: 19.8876,
@@ -126,10 +254,10 @@ async function main() {
   });
 
   const jaipur = await prisma.destination.upsert({
-    where: { id: 'dest-jaipur' },
+    where: { id: '00000000-0000-4000-8000-000000001004' },
     update: {},
     create: {
-      id: 'dest-jaipur',
+      id: '00000000-0000-4000-8000-000000001004',
       name: 'Jaipur',
       region: 'Rajasthan',
       latitude: 26.9124,
@@ -139,10 +267,10 @@ async function main() {
   });
 
   const varanasi = await prisma.destination.upsert({
-    where: { id: 'dest-varanasi' },
+    where: { id: '00000000-0000-4000-8000-000000001005' },
     update: {},
     create: {
-      id: 'dest-varanasi',
+      id: '00000000-0000-4000-8000-000000001005',
       name: 'Varanasi',
       region: 'Uttar Pradesh',
       latitude: 25.3176,
@@ -196,17 +324,46 @@ async function main() {
     });
 
     for (const fact of data.facts) {
-      await prisma.fact.create({
-        data: {
+      const existingFacts = await prisma.fact.findMany({
+        where: {
           entityType: 'attraction',
           entityId: attraction.id,
           factKey: fact.factKey,
-          factValue: fact.factValue,
           sourceId: fact.sourceId,
-          verificationStatus: fact.verificationStatus,
-          confidence: fact.confidence ?? 0.9,
         },
+        orderBy: { timestamp: 'asc' },
+        select: { id: true, feedback: { select: { id: true }, take: 1 } },
       });
+
+      const [existingFact, ...duplicateFacts] = existingFacts;
+      const unreferencedDuplicateIds = duplicateFacts
+        .filter((duplicate) => duplicate.feedback.length === 0)
+        .map((duplicate) => duplicate.id);
+
+      if (unreferencedDuplicateIds.length > 0) {
+        await prisma.fact.deleteMany({ where: { id: { in: unreferencedDuplicateIds } } });
+      }
+
+      const data = {
+        entityType: 'attraction',
+        entityId: attraction.id,
+        factKey: fact.factKey,
+        factValue: fact.factValue,
+        sourceId: fact.sourceId,
+        verificationStatus: fact.verificationStatus,
+        confidence: fact.confidence ?? 0.9,
+      };
+
+      if (existingFact) {
+        await prisma.fact.update({
+          where: { id: existingFact.id },
+          data,
+        });
+      } else {
+        await prisma.fact.create({
+          data,
+        });
+      }
     }
 
     if (data.crowdLevel) {
@@ -227,7 +384,7 @@ async function main() {
   console.log('🏛️  Seeding Bhubaneswar...');
 
   await upsertAttraction({
-    id: 'attr-lingaraj',
+    id: '00000000-0000-4000-8000-000000002001',
     destinationId: bhubaneswar.id,
     name: 'Lingaraj Temple',
     categories: ['Heritage', 'Spiritual', 'Architecture'],
@@ -250,7 +407,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-caves',
+    id: '00000000-0000-4000-8000-000000002002',
     destinationId: bhubaneswar.id,
     name: 'Udayagiri & Khandagiri Caves',
     categories: ['Heritage', 'History', 'Nature'],
@@ -270,7 +427,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-odisha-museum',
+    id: '00000000-0000-4000-8000-000000002003',
     destinationId: bhubaneswar.id,
     name: 'Odisha State Museum',
     categories: ['Museums & Culture', 'Handicrafts & Art'],
@@ -291,7 +448,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-dhauli',
+    id: '00000000-0000-4000-8000-000000002004',
     destinationId: bhubaneswar.id,
     name: 'Dhauli Shanti Stupa',
     categories: ['Heritage', 'Spiritual', 'History'],
@@ -311,7 +468,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-mukteshwar',
+    id: '00000000-0000-4000-8000-000000002005',
     destinationId: bhubaneswar.id,
     name: 'Mukteshwar Temple',
     categories: ['Heritage', 'Architecture', 'Spiritual'],
@@ -330,7 +487,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-nandankanan',
+    id: '00000000-0000-4000-8000-000000002006',
     destinationId: bhubaneswar.id,
     name: 'Nandankanan Zoological Park',
     categories: ['Nature & Parks', 'Family'],
@@ -351,7 +508,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-rajarani',
+    id: '00000000-0000-4000-8000-000000002007',
     destinationId: bhubaneswar.id,
     name: 'Rajarani Temple',
     categories: ['Heritage', 'Architecture'],
@@ -371,7 +528,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-ekamra-haat',
+    id: '00000000-0000-4000-8000-000000002008',
     destinationId: bhubaneswar.id,
     name: 'Ekamra Haat Craft Market',
     categories: ['Local Food & Markets', 'Handicrafts & Art'],
@@ -393,7 +550,7 @@ async function main() {
   console.log('🌊 Seeding Puri...');
 
   await upsertAttraction({
-    id: 'attr-jagannath',
+    id: '00000000-0000-4000-8000-000000002009',
     destinationId: puri.id,
     name: 'Shree Jagannath Temple',
     categories: ['Spiritual', 'Heritage', 'Culture'],
@@ -414,7 +571,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-golden-beach',
+    id: '00000000-0000-4000-8000-000000002010',
     destinationId: puri.id,
     name: 'Puri Golden Beach (Blue Flag Certified)',
     categories: ['Nature & Parks', 'Local Food & Markets'],
@@ -435,7 +592,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-swargadwar',
+    id: '00000000-0000-4000-8000-000000002011',
     destinationId: puri.id,
     name: 'Swargadwar & Sea Beach Market',
     categories: ['Local Food & Markets', 'Culture'],
@@ -454,7 +611,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-chilika',
+    id: '00000000-0000-4000-8000-000000002012',
     destinationId: puri.id,
     name: 'Chilika Lake Bird Sanctuary',
     categories: ['Nature & Parks', 'Heritage'],
@@ -474,7 +631,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-raghurajpur',
+    id: '00000000-0000-4000-8000-000000002013',
     destinationId: puri.id,
     name: 'Raghurajpur Heritage Craft Village',
     categories: ['Handicrafts & Art', 'Culture'],
@@ -494,7 +651,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-gundicha',
+    id: '00000000-0000-4000-8000-000000002014',
     destinationId: puri.id,
     name: 'Gundicha Temple',
     categories: ['Spiritual', 'Heritage'],
@@ -516,7 +673,7 @@ async function main() {
   console.log('☀️  Seeding Konark...');
 
   await upsertAttraction({
-    id: 'attr-sun-temple',
+    id: '00000000-0000-4000-8000-000000002015',
     destinationId: konark.id,
     name: 'Konark Sun Temple (UNESCO World Heritage)',
     categories: ['Heritage', 'Architecture', 'History'],
@@ -538,7 +695,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-konark-beach',
+    id: '00000000-0000-4000-8000-000000002016',
     destinationId: konark.id,
     name: 'Konark Beach (Chandrabhaga)',
     categories: ['Nature & Parks'],
@@ -557,7 +714,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-konark-museum',
+    id: '00000000-0000-4000-8000-000000002017',
     destinationId: konark.id,
     name: 'Archaeological Museum Konark',
     categories: ['Museums & Culture', 'Heritage'],
@@ -576,7 +733,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-ramchandi',
+    id: '00000000-0000-4000-8000-000000002018',
     destinationId: konark.id,
     name: 'Ramchandi Temple',
     categories: ['Spiritual'],
@@ -598,7 +755,7 @@ async function main() {
   console.log('🏰 Seeding Jaipur...');
 
   await upsertAttraction({
-    id: 'attr-amber-fort',
+    id: '00000000-0000-4000-8000-000000002019',
     destinationId: jaipur.id,
     name: 'Amber Fort & Palace',
     categories: ['Heritage', 'Architecture', 'History'],
@@ -619,7 +776,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-hawa-mahal',
+    id: '00000000-0000-4000-8000-000000002020',
     destinationId: jaipur.id,
     name: 'Hawa Mahal (Palace of Winds)',
     categories: ['Heritage', 'Architecture'],
@@ -639,7 +796,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-city-palace-jaipur',
+    id: '00000000-0000-4000-8000-000000002021',
     destinationId: jaipur.id,
     name: 'City Palace Jaipur',
     categories: ['Heritage', 'Architecture', 'Museums & Culture'],
@@ -659,7 +816,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-jantar-mantar',
+    id: '00000000-0000-4000-8000-000000002022',
     destinationId: jaipur.id,
     name: 'Jantar Mantar (UNESCO World Heritage)',
     categories: ['Heritage', 'History', 'Architecture'],
@@ -678,7 +835,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-nahargarh',
+    id: '00000000-0000-4000-8000-000000002023',
     destinationId: jaipur.id,
     name: 'Nahargarh Fort',
     categories: ['Heritage', 'Nature & Parks'],
@@ -697,7 +854,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-jaipur-bazaar',
+    id: '00000000-0000-4000-8000-000000002024',
     destinationId: jaipur.id,
     name: 'Johari & Tripolia Bazaar',
     categories: ['Local Food & Markets', 'Handicrafts & Art'],
@@ -717,7 +874,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-albert-hall',
+    id: '00000000-0000-4000-8000-000000002025',
     destinationId: jaipur.id,
     name: 'Albert Hall Museum',
     categories: ['Museums & Culture', 'Heritage'],
@@ -736,7 +893,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-jal-mahal',
+    id: '00000000-0000-4000-8000-000000002026',
     destinationId: jaipur.id,
     name: 'Jal Mahal (Water Palace)',
     categories: ['Heritage', 'Nature & Parks'],
@@ -759,7 +916,7 @@ async function main() {
   console.log('🕯️  Seeding Varanasi...');
 
   await upsertAttraction({
-    id: 'attr-dashashwamedh',
+    id: '00000000-0000-4000-8000-000000002027',
     destinationId: varanasi.id,
     name: 'Dashashwamedh Ghat & Ganga Aarti',
     categories: ['Spiritual', 'Culture', 'Heritage'],
@@ -780,7 +937,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-kashi-vishwanath',
+    id: '00000000-0000-4000-8000-000000002028',
     destinationId: varanasi.id,
     name: 'Kashi Vishwanath Temple',
     categories: ['Spiritual', 'Heritage'],
@@ -801,7 +958,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-sarnath',
+    id: '00000000-0000-4000-8000-000000002029',
     destinationId: varanasi.id,
     name: 'Sarnath — Dhamek Stupa & Museum',
     categories: ['Heritage', 'History', 'Spiritual'],
@@ -821,7 +978,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-bhu',
+    id: '00000000-0000-4000-8000-000000002030',
     destinationId: varanasi.id,
     name: 'Banaras Hindu University & New Vishwanath Temple',
     categories: ['Heritage', 'Spiritual', 'Architecture'],
@@ -840,7 +997,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-ramnagar-fort',
+    id: '00000000-0000-4000-8000-000000002031',
     destinationId: varanasi.id,
     name: 'Ramnagar Fort & Museum',
     categories: ['Heritage', 'Museums & Culture'],
@@ -859,7 +1016,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-assi-ghat',
+    id: '00000000-0000-4000-8000-000000002032',
     destinationId: varanasi.id,
     name: 'Assi Ghat & Varanasi Sunrise Boat Ride',
     categories: ['Culture', 'Nature & Parks', 'Local Food & Markets'],
@@ -878,7 +1035,7 @@ async function main() {
   });
 
   await upsertAttraction({
-    id: 'attr-vishwanath-gali',
+    id: '00000000-0000-4000-8000-000000002033',
     destinationId: varanasi.id,
     name: 'Vishwanath Gali — Street Food Trail',
     categories: ['Local Food & Markets'],
@@ -897,9 +1054,57 @@ async function main() {
     ],
   });
 
+  console.log('🏪 Creating local business discovery entries...');
+  await prisma.localBusiness.upsert({
+    where: { id: '00000000-0000-4000-8000-000000004001' },
+    update: {},
+    create: {
+      id: '00000000-0000-4000-8000-000000004001',
+      name: 'Ekamra Haat Artisan Collective',
+      category: 'Handicrafts & Art',
+      latitude: 20.2562,
+      longitude: 85.8389,
+      destinationId: bhubaneswar.id,
+      isLocallyOwned: true,
+      ownershipEvidenceSourceId: srcCommunity.id,
+      description: 'Local artisan stalls for handloom, stone carving, and Pattachitra work.',
+    },
+  });
+  await prisma.localBusiness.upsert({
+    where: { id: '00000000-0000-4000-8000-000000004002' },
+    update: {},
+    create: {
+      id: '00000000-0000-4000-8000-000000004002',
+      name: 'Raghurajpur Artist Homes',
+      category: 'Handicrafts & Art',
+      latitude: 19.8837,
+      longitude: 85.8867,
+      destinationId: puri.id,
+      isLocallyOwned: true,
+      ownershipEvidenceSourceId: srcCommunity.id,
+      description: 'Family-run craft homes selling Pattachitra and palm-leaf artwork directly.',
+    },
+  });
+  await prisma.localBusiness.upsert({
+    where: { id: '00000000-0000-4000-8000-000000004003' },
+    update: {},
+    create: {
+      id: '00000000-0000-4000-8000-000000004003',
+      name: 'Johari Bazaar Gem Cooperative',
+      category: 'Local Food & Markets',
+      latitude: 26.9217,
+      longitude: 75.8236,
+      destinationId: jaipur.id,
+      isLocallyOwned: true,
+      ownershipEvidenceSourceId: srcCommunity.id,
+      description: 'Locally operated market cluster for gems, jewelry, and textiles.',
+    },
+  });
+
   console.log('\n✅ Seeding complete!');
   console.log(`   → 5 destinations`);
   console.log(`   → 33 attractions`);
+  console.log(`   → 3 local business discovery entries`);
   console.log(`   → 5 sources`);
   console.log(`   → Facts with proper verification statuses (VERIFIED / COMMUNITY / UNVERIFIED)`);
 }

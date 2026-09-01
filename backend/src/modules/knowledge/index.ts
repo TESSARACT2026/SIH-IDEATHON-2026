@@ -2,13 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../shared/db/index.js';
 import { AppError } from '../../shared/middleware/errorHandler.js';
+import { resolveDestinationId } from '../../shared/utils/idAliases.js';
 
 const router = Router();
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
 const idParamSchema = z.object({
-  id: z.string().min(1).max(100), // Accepts both UUID and slug IDs (e.g. 'dest-bhubaneswar')
+  id: z.string().min(1).max(100),
 }).strict();
 
 const destinationsQuerySchema = z.object({
@@ -47,7 +48,8 @@ router.get('/destinations', async (req, res, next) => {
 // ─── GET /destinations/:id — single destination with attraction count ─────────
 router.get('/destinations/:id', async (req, res, next) => {
   try {
-    const { id } = idParamSchema.parse(req.params);
+    const { id: rawId } = idParamSchema.parse(req.params);
+    const id = resolveDestinationId(rawId);
     const destination = await prisma.destination.findUnique({
       where: { id },
       include: {
@@ -72,7 +74,8 @@ router.get('/destinations/:id', async (req, res, next) => {
 // ─── GET /destinations/:id/attractions — list attractions with optional filters ─
 router.get('/destinations/:id/attractions', async (req, res, next) => {
   try {
-    const { id } = idParamSchema.parse(req.params);
+    const { id: rawId } = idParamSchema.parse(req.params);
+    const id = resolveDestinationId(rawId);
 
     const queryResult = attractionsQuerySchema.safeParse(req.query);
     const filters = queryResult.success ? queryResult.data : {};

@@ -6,6 +6,8 @@ import { validateLLMNarration } from '../trust-validation/index.js';
 import { sanitizeBody } from '../../shared/middleware/sanitize.js';
 
 const router = Router();
+const GEMINI_TTS_MODEL = 'gemini-3.1-flash-tts-preview';
+const PCM_SAMPLE_RATE = 24000;
 
 // ─── Prompt Sandbox ──────────────────────────────────────────────────────────
 // Wraps user input in explicit delimiters to mitigate prompt injection.
@@ -23,9 +25,8 @@ function sandboxUserInput(rawInput: string): string {
 
 // ─── Gemini API Helper ───────────────────────────────────────────────────────
 // Calls the Gemini REST API directly (no SDK dependency needed).
-async function callGemini(systemInstruction: string, userContent: string): Promise<string> {
-  const GEMINI_MODEL = 'gemini-2.0-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`;
+async function callGemini(systemInstruction: string, userContent: string, responseMimeType?: string): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`;
 
   const body = {
     system_instruction: {
@@ -40,7 +41,7 @@ async function callGemini(systemInstruction: string, userContent: string): Promi
     generationConfig: {
       temperature: 0.2,       // Low temp for structured extraction
       maxOutputTokens: 1024,
-      responseMimeType: 'application/json',
+      ...(responseMimeType ? { responseMimeType } : {}),
     },
     safetySettings: [
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -66,6 +67,61 @@ async function callGemini(systemInstruction: string, userContent: string): Promi
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error('Gemini returned empty response');
   return text;
+}
+
+async function callGeminiSpeech(text: string, voiceName: string, languageCode?: string): Promise<Buffer> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TTS_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`;
+  const body = {
+    contents: [{ parts: [{ text }] }],
+    generationConfig: {
+      responseModalities: ['AUDIO'],
+      speechConfig: {
+        ...(languageCode ? { languageCode } : {}),
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName },
+        },
+      },
+    },
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Gemini TTS API error ${response.status}: ${errText}`);
+  }
+
+  const data = await response.json() as {
+    candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { data?: string }, inline_data?: { data?: string } }> } }>;
+  };
+  const audio = data.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data || part.inline_data?.data);
+  const encoded = audio?.inlineData?.data ?? audio?.inline_data?.data;
+  if (!encoded) throw new Error('Gemini TTS returned empty audio');
+
+  return Buffer.from(encoded, 'base64');
+}
+
+function wavFromPcm(pcm: Buffer): Buffer {
+  const header = Buffer.alloc(44);
+  const byteRate = PCM_SAMPLE_RATE * 2;
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(PCM_SAMPLE_RATE, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
 }
 
 // ─── Fallback: keyword-based extraction (if Gemini unavailable) ──────────────
@@ -105,6 +161,13 @@ const narrateSchema = z.object({
   validFactIds: z.array(z.string().uuid()).max(100),
 }).strict();
 
+const speechSchema = z.object({
+  text: z.string().min(3).max(4000),
+  voiceName: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{1,63}$/).default('Kore'),
+  languageCode: z.string().regex(/^[a-z]{2,3}(-[A-Z]{2})?$/).optional(),
+  format: z.enum(['wav', 'pcm']).default('wav'),
+}).strict();
+
 // ─── POST /nlu/extract ───────────────────────────────────────────────────────
 // Extracts structured travel preferences from free-form natural language text.
 router.post('/extract', sanitizeBody, async (req, res, next) => {
@@ -127,7 +190,7 @@ Return ONLY a valid JSON object with these exact keys:
 
 Respond with ONLY the JSON object, no explanation, no markdown, no code fences.`;
 
-      const raw = await callGemini(systemInstruction, sandboxedPrompt);
+      const raw = await callGemini(systemInstruction, sandboxedPrompt, 'application/json');
       // Strip any accidental markdown fences Gemini might add
       const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
       const geminiResult = JSON.parse(cleaned);
@@ -212,6 +275,27 @@ Do NOT invent facts not present in the itinerary data. Do NOT use markdown.`;
       return;
     }
     next(new AppError('Failed to generate narration', 500, 'NLU_ERROR'));
+  }
+});
+
+router.post('/speech', sanitizeBody, async (req, res, next) => {
+  try {
+    const { text, voiceName, languageCode, format } = speechSchema.parse(req.body);
+    const pcm = await callGeminiSpeech(text, voiceName, languageCode);
+    const audio = format === 'pcm' ? pcm : wavFromPcm(pcm);
+
+    res.setHeader('Content-Type', format === 'pcm' ? 'audio/L16; rate=24000; channels=1' : 'audio/wav');
+    res.setHeader('Content-Disposition', `attachment; filename="narration.${format}"`);
+    res.setHeader('Content-Length', audio.length.toString());
+    res.send(audio);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid speech request', details: err.flatten().fieldErrors },
+      });
+      return;
+    }
+    next(new AppError('Audio generation is temporarily unavailable', 503, 'AUDIO_UNAVAILABLE'));
   }
 });
 

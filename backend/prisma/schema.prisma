@@ -57,6 +57,18 @@ enum FeedbackStatus {
   REJECTED
 }
 
+enum FeedbackEntityType {
+  ATTRACTION
+  FACT
+  CROWD_RECORD
+}
+
+enum FeedbackType {
+  INACCURATE
+  OUTDATED
+  OTHER
+}
+
 enum TripStatus {
   DRAFT
   PLANNED
@@ -94,42 +106,42 @@ enum TransportPreference {
 // ─── User & Preferences ────────────────────────────────────────────────────
 
 model User {
-  id                String    @id @default(uuid())
-  email             String    @unique
+  id                    String   @id @default(uuid())
+  email                 String   @unique
   name                  String?
-  preferredLanguage     String    @default("en") @map("preferred_language")
-  emergencyContactName  String?   @map("emergency_contact_name")
-  emergencyContactPhone String?   @map("emergency_contact_phone")
-  supabaseId            String?   @unique @map("supabase_id")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
+  preferredLanguage     String   @default("en") @map("preferred_language")
+  emergencyContactName  String?  @map("emergency_contact_name")
+  emergencyContactPhone String?  @map("emergency_contact_phone")
+  supabaseId            String?  @unique @map("supabase_id")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
-  preferences    UserPreference?
-  trips          Trip[]
-  feedback       Feedback[]
-  favorites      Favorite[]
+  preferences UserPreference?
+  trips       Trip[]
+  feedback    Feedback[]
+  favorites   Favorite[]
 
   @@map("users")
 }
 
 model UserPreference {
-  id                       String              @id @default(uuid())
-  userId                   String              @unique @map("user_id")
-  budgetBand               BudgetBand?         @map("budget_band")
-  pace                     Pace                @default(MODERATE)
-  groupType                GroupType           @default(SOLO) @map("group_type")
-  interests                String[]            @default([])
-  foodPreferences          String[]            @default([]) @map("food_preferences")
-  transportPreference      TransportPreference @default(MIXED) @map("transport_preference")
-  accessibilityMobility    Boolean             @default(false) @map("accessibility_mobility")
-  accessibilityVision      Boolean             @default(false) @map("accessibility_vision")
-  accessibilityHearing     Boolean             @default(false) @map("accessibility_hearing")
-  accessibilityCognitive   Boolean             @default(false) @map("accessibility_cognitive")
-  accessibilityNotes       String?             @map("accessibility_notes")
-  walkingToleranceMinutes  Int                 @default(30) @map("walking_tolerance_minutes")
-  indoorOutdoorPreference  String              @default("mixed") @map("indoor_outdoor_preference")
-  localBusinessPreference  Boolean             @default(false) @map("local_business_preference")
-  updatedAt                DateTime            @updatedAt @map("updated_at")
+  id                      String              @id @default(uuid())
+  userId                  String              @unique @map("user_id")
+  budgetBand              BudgetBand?         @map("budget_band")
+  pace                    Pace                @default(MODERATE)
+  groupType               GroupType           @default(SOLO) @map("group_type")
+  interests               String[]            @default([])
+  foodPreferences         String[]            @default([]) @map("food_preferences")
+  transportPreference     TransportPreference @default(MIXED) @map("transport_preference")
+  accessibilityMobility   Boolean             @default(false) @map("accessibility_mobility")
+  accessibilityVision     Boolean             @default(false) @map("accessibility_vision")
+  accessibilityHearing    Boolean             @default(false) @map("accessibility_hearing")
+  accessibilityCognitive  Boolean             @default(false) @map("accessibility_cognitive")
+  accessibilityNotes      String?             @map("accessibility_notes")
+  walkingToleranceMinutes Int                 @default(30) @map("walking_tolerance_minutes")
+  indoorOutdoorPreference String              @default("mixed") @map("indoor_outdoor_preference")
+  localBusinessPreference Boolean             @default(false) @map("local_business_preference")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -156,28 +168,29 @@ model Destination {
 }
 
 model Attraction {
-  id                     String   @id @default(uuid())
-  destinationId          String   @map("destination_id")
-  name                   String
-  categories             String[] @default([])
-  latitude               Float
-  longitude              Float
-  address                String?
-  description            String?
-  indoorOutdoor          String   @default("mixed") @map("indoor_outdoor")
-  accessibilityWheelchair Boolean @default(false) @map("accessibility_wheelchair")
-  accessibilityVisual    Boolean  @default(false) @map("accessibility_visual")
-  accessibilityHearing   Boolean  @default(false) @map("accessibility_hearing")
-  accessibilityNotes     String?  @map("accessibility_notes")
-  createdAt              DateTime @default(now()) @map("created_at")
+  id                      String   @id @default(uuid())
+  destinationId           String   @map("destination_id")
+  name                    String
+  categories              String[] @default([])
+  latitude                Float
+  longitude               Float
+  address                 String?
+  description             String?
+  indoorOutdoor           String   @default("mixed") @map("indoor_outdoor")
+  accessibilityWheelchair Boolean  @default(false) @map("accessibility_wheelchair")
+  accessibilityVisual     Boolean  @default(false) @map("accessibility_visual")
+  accessibilityHearing    Boolean  @default(false) @map("accessibility_hearing")
+  accessibilityNotes      String?  @map("accessibility_notes")
+  createdAt               DateTime @default(now()) @map("created_at")
 
-  destination      Destination          @relation(fields: [destinationId], references: [id])
+  destination      Destination           @relation(fields: [destinationId], references: [id])
   facts            Fact[]
   crowdRecords     CrowdCapacityRecord[]
   sensitivityFlags SensitivityFlag[]
   itineraryItems   ItineraryItem[]
   favorites        Favorite[]
 
+  @@index([destinationId])
   @@map("attractions")
 }
 
@@ -195,7 +208,7 @@ model Source {
   verificationRecords VerificationRecord[]
   crowdRecords        CrowdCapacityRecord[]
   sensitivityFlags    SensitivityFlag[]
-  localBusinesses     LocalBusiness[]        @relation("OwnershipEvidence")
+  localBusinesses     LocalBusiness[]       @relation("OwnershipEvidence")
 
   @@map("sources")
 }
@@ -221,6 +234,7 @@ model Fact {
 
   @@index([entityType, entityId])
   @@index([factKey])
+  @@index([sourceId])
   @@index([verificationStatus])
   @@map("facts")
 }
@@ -237,6 +251,8 @@ model VerificationRecord {
   fact   Fact    @relation(fields: [factId], references: [id], onDelete: Cascade)
   source Source? @relation(fields: [sourceId], references: [id])
 
+  @@index([factId])
+  @@index([sourceId])
   @@map("verification_records")
 }
 
@@ -254,6 +270,8 @@ model CrowdCapacityRecord {
   attraction Attraction @relation(fields: [attractionId], references: [id], onDelete: Cascade)
   source     Source?    @relation(fields: [sourceId], references: [id])
 
+  @@index([attractionId, timestamp])
+  @@index([sourceId])
   @@map("crowd_capacity_records")
 }
 
@@ -269,48 +287,54 @@ model SensitivityFlag {
   attraction Attraction @relation(fields: [attractionId], references: [id], onDelete: Cascade)
   source     Source?    @relation(fields: [sourceId], references: [id])
 
+  @@index([attractionId])
+  @@index([sourceId])
   @@map("sensitivity_flags")
 }
 
 // ─── Local Business ─────────────────────────────────────────────────────────
 
 model LocalBusiness {
-  id                       String   @id @default(uuid())
-  name                     String
-  category                 String?
-  latitude                 Float
-  longitude                Float
-  destinationId            String   @map("destination_id")
-  isLocallyOwned           Boolean? @map("is_locally_owned")
-  ownershipEvidenceSourceId String? @map("ownership_evidence_source_id")
-  description              String?
+  id                        String   @id @default(uuid())
+  name                      String
+  category                  String?
+  latitude                  Float
+  longitude                 Float
+  destinationId             String   @map("destination_id")
+  isLocallyOwned            Boolean? @map("is_locally_owned")
+  ownershipEvidenceSourceId String?  @map("ownership_evidence_source_id")
+  description               String?
 
   destination     Destination @relation(fields: [destinationId], references: [id])
   ownershipSource Source?     @relation("OwnershipEvidence", fields: [ownershipEvidenceSourceId], references: [id])
 
+  @@index([destinationId])
+  @@index([ownershipEvidenceSourceId])
   @@map("local_businesses")
 }
 
 // ─── Trips & Itineraries ────────────────────────────────────────────────────
 
 model Trip {
-  id                  String     @id @default(uuid())
-  userId              String     @map("user_id")
-  destinationId       String     @map("destination_id")
-  title               String     @default("My Trip")
-  startDate           DateTime   @map("start_date")
-  endDate             DateTime   @map("end_date")
-  status              TripStatus @default(DRAFT)
-  itinerarySnapshot   Json?      @map("itinerary_snapshot")   // frozen snapshot of last generated itinerary
-  isPublic            Boolean    @default(false) @map("is_public")
-  shareToken          String?    @unique @map("share_token")  // crypto-random, set when is_public=true
-  createdAt           DateTime   @default(now()) @map("created_at")
-  updatedAt           DateTime   @updatedAt @map("updated_at")
+  id                String     @id @default(uuid())
+  userId            String     @map("user_id")
+  destinationId     String     @map("destination_id")
+  title             String     @default("My Trip")
+  startDate         DateTime   @map("start_date")
+  endDate           DateTime   @map("end_date")
+  status            TripStatus @default(DRAFT)
+  itinerarySnapshot Json?      @map("itinerary_snapshot") // frozen snapshot of last generated itinerary
+  isPublic          Boolean    @default(false) @map("is_public")
+  shareToken        String?    @unique @map("share_token") // crypto-random, set when is_public=true
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   destination Destination @relation(fields: [destinationId], references: [id])
   itineraries Itinerary[]
 
+  @@index([userId, startDate])
+  @@index([destinationId])
   @@map("trips")
 }
 
@@ -325,57 +349,68 @@ model Itinerary {
   trip  Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
   items ItineraryItem[]
 
+  @@index([tripId, generatedAt])
   @@map("itineraries")
 }
 
 model ItineraryItem {
-  id                        String @id @default(uuid())
-  itineraryId               String @map("itinerary_id")
-  dayNumber                 Int    @map("day_number")
+  id                        String  @id @default(uuid())
+  itineraryId               String  @map("itinerary_id")
+  dayNumber                 Int     @map("day_number")
   sequence                  Int
-  startTime                 String @map("start_time")
-  endTime                   String @map("end_time")
-  entityType                String @default("attraction") @map("entity_type")
-  entityId                  String @map("entity_id")
-  travelBufferMinutesBefore Int    @default(0) @map("travel_buffer_minutes_before")
+  startTime                 String  @map("start_time")
+  endTime                   String  @map("end_time")
+  entityType                String  @default("attraction") @map("entity_type")
+  entityId                  String  @map("entity_id")
+  travelBufferMinutesBefore Int     @default(0) @map("travel_buffer_minutes_before")
   explanationText           String? @map("explanation_text")
-  trustSummary              Json?  @map("trust_summary")
+  trustSummary              Json?   @map("trust_summary")
 
   itinerary  Itinerary   @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
   attraction Attraction? @relation(fields: [entityId], references: [id])
 
+  @@index([itineraryId, dayNumber, sequence])
+  @@index([entityId])
   @@map("itinerary_items")
 }
 
 // ─── Feedback ───────────────────────────────────────────────────────────────
 
 model Feedback {
-  id             String         @id @default(uuid())
-  userId         String         @map("user_id")
-  factId         String         @map("fact_id")
-  submittedValue String?        @map("submitted_value")
+  id             String             @id @default(uuid())
+  userId         String             @map("user_id")
+  entityType     FeedbackEntityType @default(FACT) @map("entity_type")
+  entityId       String             @map("entity_id")
+  feedbackType   FeedbackType       @default(OTHER) @map("feedback_type")
+  factId         String?            @map("fact_id")
+  submittedValue String?            @map("submitted_value")
   note           String?
-  status         FeedbackStatus @default(PENDING)
-  createdAt      DateTime       @default(now()) @map("created_at")
+  status         FeedbackStatus     @default(PENDING)
+  createdAt      DateTime           @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fact Fact @relation(fields: [factId], references: [id])
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fact Fact? @relation(fields: [factId], references: [id])
 
+  @@index([userId])
+  @@index([factId])
+  @@index([entityType, entityId])
+  @@index([feedbackType])
+  @@index([status, createdAt])
   @@map("feedback")
 }
-
 
 // ─── Favorites ──────────────────────────────────────────────────────────────
 
 model Favorite {
-  id           String     @id @default(uuid())
-  userId       String     @map("user_id")
-  attractionId String     @map("attraction_id")
-  createdAt    DateTime   @default(now()) @map("created_at")
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  attractionId String   @map("attraction_id")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   attraction Attraction @relation(fields: [attractionId], references: [id], onDelete: Cascade)
 
   @@unique([userId, attractionId])
+  @@index([attractionId])
   @@map("favorites")
 }

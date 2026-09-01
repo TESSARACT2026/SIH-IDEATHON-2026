@@ -2,17 +2,19 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../shared/db/index.js';
 import { AppError } from '../../shared/middleware/errorHandler.js';
+import { resolveAttractionId } from '../../shared/utils/idAliases.js';
 
 const router = Router();
 
 const idParamSchema = z.object({
-  id: z.string().min(1).max(100), // supports both UUID and slug IDs
+  id: z.string().min(1).max(100),
 }).strict();
 
 // ─── GET /:id/facts — full provenance for all facts of an attraction ──────────
 router.get('/:id/facts', async (req, res, next) => {
   try {
-    const { id } = idParamSchema.parse(req.params);
+    const { id: rawId } = idParamSchema.parse(req.params);
+    const id = resolveAttractionId(rawId);
 
     const attraction = await prisma.attraction.findUnique({ where: { id } });
     if (!attraction) throw new AppError('Attraction not found', 404, 'NOT_FOUND');
@@ -50,7 +52,8 @@ router.get('/:id/facts', async (req, res, next) => {
 // excluding the original itself, ordered by category overlap (most relevant first).
 router.get('/:id/alternatives', async (req, res, next) => {
   try {
-    const { id } = idParamSchema.parse(req.params);
+    const { id: rawId } = idParamSchema.parse(req.params);
+    const id = resolveAttractionId(rawId);
 
     const attraction = await prisma.attraction.findUnique({ where: { id } });
     if (!attraction) throw new AppError('Attraction not found', 404, 'NOT_FOUND');

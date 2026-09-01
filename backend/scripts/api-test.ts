@@ -3,8 +3,12 @@
  * Tests every registered endpoint with realistic payloads.
  * Outputs a clear PASS/FAIL report with error details.
  *
- * Run: npx tsx scripts/api-test.ts
+ * Run public smoke checks: npx tsx scripts/api-test.ts
+ * Run auth checks too: API_TEST_BEARER_TOKEN=<supabase-access-token> npx tsx scripts/api-test.ts
  */
+
+import '../src/shared/config/index.js';
+import { prisma } from '../src/shared/db/index.js';
 
 const BASE = 'http://localhost:3001';
 const API  = `${BASE}/api/v1`;
@@ -18,13 +22,14 @@ interface Result {
   durationMs: number;
 }
 
-const results: Result[] = [];
-let authToken  = '';
-let refreshTok = '';
-let userId     = '';
+const results = [] as Result[];
+let authToken  = process.env.API_TEST_BEARER_TOKEN ?? '';
 let tripId     = '';
+let shareToken = '';
 let attrId     = '';
-let destId     = 'dest-bhubaneswar'; // stable slug from seed
+let destId     = 'bhubaneswar-odisha'; // legacy frontend slug, resolved by backend
+let crowdRecordId = '';
+let feedbackId = '';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 async function test(
@@ -53,6 +58,22 @@ async function test(
   }
 }
 
+function addWarning(name: string, detail: string): void {
+  results.push({ name, status: 'WARN', durationMs: 0, detail });
+}
+
+async function cleanupCreatedRecords(): Promise<void> {
+  try {
+    if (tripId) await prisma.trip.deleteMany({ where: { id: tripId } });
+    if (feedbackId) await prisma.feedback.deleteMany({ where: { id: feedbackId } });
+    if (crowdRecordId) await prisma.crowdCapacityRecord.deleteMany({ where: { id: crowdRecordId } });
+  } catch (err) {
+    addWarning('Authenticated test cleanup', (err as Error).message);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 async function req(
   method: string,
   url: string,
@@ -73,6 +94,24 @@ async function req(
   return { ok: res.ok, status: res.status, body: parsed };
 }
 
+async function reqRaw(
+  method: string,
+  url: string,
+  body?: unknown,
+  headers: Record<string, string> = {}
+): Promise<{ ok: boolean; status: number; body: ArrayBuffer; headers: Headers }> {
+  const res = await fetch(url, {
+    method,
+    headers: {
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...headers,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return { ok: res.ok, status: res.status, body: await res.arrayBuffer(), headers: res.headers };
+}
+
 // ─── Test Suites ─────────────────────────────────────────────────────────────
 
 async function testHealth() {
@@ -85,72 +124,12 @@ async function testHealth() {
 }
 
 async function testAuth() {
-  const testEmail = `apitest_${Date.now()}@margdarshak.dev`;
-
-  await test('POST /auth/register', async () => {
-    const r = await req('POST', `${API}/auth/register`, {
-      email: testEmail,
-      password: 'TestPass@123',
-      name: 'API Test User',
-    });
-    const b = r.body as Record<string, unknown>;
-    const data = b.data as Record<string, unknown>;
-    if (r.ok) {
-      authToken  = data.accessToken as string;
-      // Refresh token is set as an httpOnly cookie by the server, not in body.
-      // We store the raw token from the response if present, else empty.
-      refreshTok = (data.refreshToken as string) ?? '';
-      userId     = (data.user as Record<string, unknown>).id as string;
-    }
-    return r;
-  });
-
-  await test('POST /auth/login', async () => {
-    const prev = authToken;
-    authToken = ''; // temporarily clear to test login without token
-    const r = await req('POST', `${API}/auth/login`, {
-      email: testEmail,
-      password: 'TestPass@123',
-    });
-    const b = r.body as Record<string, unknown>;
-    const data = b.data as Record<string, unknown>;
-    if (r.ok) {
-      authToken  = data.accessToken as string;
-      refreshTok = (data.refreshToken as string) ?? '';
-    } else {
-      authToken = prev; // restore
-    }
-    return r;
-  });
-
-  await test('POST /auth/login (wrong password → 401)', async () => {
+  await test('GET /users/me (no token -> 401)', async () => {
     const saved = authToken;
     authToken = '';
-    const r = await req('POST', `${API}/auth/login`, {
-      email: testEmail,
-      password: 'WrongPassword!',
-    });
+    const r = await req('GET', `${API}/users/me`);
     authToken = saved;
-    // Expect 401
     return { ...r, ok: r.status === 401 };
-  });
-
-  // Refresh token is sent as an httpOnly cookie by the backend.
-  // In this test environment we send it in the body as a fallback.
-  await test('POST /auth/refresh', async () => {
-    if (!refreshTok) {
-      // If no raw token available (cookie-only flow), skip gracefully
-      return { ok: true, status: 200, body: { note: 'refresh token is cookie-only, skipped' } };
-    }
-    const r = await req('POST', `${API}/auth/refresh`, { refreshToken: refreshTok });
-    const b = r.body as Record<string, unknown>;
-    const data = b.data as Record<string, unknown>;
-    if (r.ok && data?.accessToken) {
-      authToken  = data.accessToken as string;
-      refreshTok = (data.refreshToken as string) ?? refreshTok;
-    }
-    // 401 is acceptable here if the server is cookie-only
-    return { ...r, ok: r.ok || r.status === 401 };
   });
 }
 
@@ -188,7 +167,7 @@ async function testUsers() {
     return req('PATCH', `${API}/users/me/preferences`, { pace: 'MODERATE' });
   });
 
-  await test('GET /users/me (no token → 401)', async () => {
+  await test('GET /users/me (invalid token -> 401)', async () => {
     const r = await req('GET', `${API}/users/me`, undefined, { Authorization: 'Bearer invalid' });
     return { ...r, ok: r.status === 401 };
   });
@@ -207,7 +186,7 @@ async function testKnowledge() {
     return req('GET', `${API}/knowledge/destinations/${destId}`);
   });
 
-  await test('GET /knowledge/destinations/:id (invalid ID → 404)', async () => {
+  await test('GET /knowledge/destinations/:id (unknown ID -> 404)', async () => {
     const r = await req('GET', `${API}/knowledge/destinations/nonexistent-id-xyz`);
     return { ...r, ok: r.status === 404 };
   });
@@ -250,6 +229,14 @@ async function testAttractions() {
     return r;
   });
 
+  await test('GET /attractions/lingaraj-temple/facts slug compatibility', async () => {
+    const r = await req('GET', `${API}/attractions/lingaraj-temple/facts`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as unknown[];
+    if (r.ok && data.length < 1) return { ...r, ok: false };
+    return r;
+  });
+
   await test('GET /attractions/:id/alternatives', async () => {
     const r = await req('GET', `${API}/attractions/${attrId}/alternatives`);
     const b = r.body as Record<string, unknown>;
@@ -258,10 +245,10 @@ async function testAttractions() {
     return r;
   });
 
-  await test('GET /attractions/nonexistent/facts → 400', async () => {
-    // Non-UUID ID should fail validation
+  await test('GET /attractions/nonexistent/facts -> 404', async () => {
+    // Unknown slug-shaped IDs are accepted by validation, then miss in storage.
     const r = await req('GET', `${API}/attractions/nonexistent/facts`);
-    return { ...r, ok: r.status === 400 || r.status === 404 };
+    return { ...r, ok: r.status === 404 };
   });
 }
 
@@ -272,6 +259,10 @@ async function testNLU() {
     });
     const b = r.body as Record<string, unknown>;
     const data = b.data as Record<string, unknown>;
+    const meta = b.meta as Record<string, unknown> | undefined;
+    if (r.ok && meta?.fallback_used) {
+      addWarning('POST /nlu/extract fallback', String(meta.reason ?? 'Gemini fallback used'));
+    }
     if (r.ok && !data.pace) return { ...r, ok: false };
     return r;
   });
@@ -282,36 +273,62 @@ async function testNLU() {
   });
 
   await test('POST /nlu/narrate', async () => {
-    return req('POST', `${API}/nlu/narrate`, {
+    const r = await req('POST', `${API}/nlu/narrate`, {
       itinerary: [
         { attractionName: 'Lingaraj Temple', startTime: '09:00', endTime: '11:00' },
         { attractionName: 'Odisha State Museum', startTime: '12:00', endTime: '14:00' },
       ],
       validFactIds: [],
     });
+    const b = r.body as Record<string, unknown>;
+    const meta = b.meta as Record<string, unknown> | undefined;
+    if (r.ok && meta?.fallback_used) {
+      addWarning('POST /nlu/narrate fallback', String(meta.reason ?? 'Gemini fallback used'));
+    }
+    return r;
+  });
+
+  await test('POST /nlu/speech invalid text -> 400', async () => {
+    const r = await req('POST', `${API}/nlu/speech`, { text: 'hi' });
+    return { ...r, ok: r.status === 400 };
+  });
+
+  await test('POST /nlu/speech', async () => {
+    const r = await reqRaw('POST', `${API}/nlu/speech`, { text: 'Say warmly: Welcome to Bhubaneswar.', format: 'wav' });
+    if (r.status === 503) {
+      addWarning('POST /nlu/speech unavailable', 'Gemini TTS unavailable');
+      return { ok: true, status: r.status, body: {} };
+    }
+
+    const header = new Uint8Array(r.body.slice(0, 4));
+    const startsWithWav = header[0] === 82 && header[1] === 73 && header[2] === 70 && header[3] === 70;
+    return { ok: r.ok && r.headers.get('content-type')?.includes('audio/wav') === true && startsWithWav, status: r.status, body: {} };
   });
 }
 
 async function testPlanner() {
+  const plannerPayload = {
+    destinationId: destId,
+    startDate: new Date(Date.now() + 7 * 86400000).toISOString(),
+    days: 2,
+    preferences: {
+      pace: 'MODERATE',
+      groupType: 'COUPLE',
+      transportPreference: 'OWN_VEHICLE',
+      interests: ['Heritage', 'Spiritual'],
+      accessibilityWheelchair: false,
+      accessibilityVision: false,
+      accessibilityHearing: false,
+      accessibilityCognitive: false,
+      walkingToleranceMinutes: 30,
+      indoorOutdoorPreference: 'mixed',
+      localBusinessPreference: false,
+    },
+  };
+
   await test('POST /planner/generate', async () => {
-    const startDate = new Date(Date.now() + 7 * 86400000).toISOString(); // full ISO datetime
     const r = await req('POST', `${API}/planner/generate`, {
-      destinationId: destId,
-      startDate,
-      days: 2,
-      preferences: {
-        pace: 'MODERATE',
-        groupType: 'COUPLE',
-        transportPreference: 'OWN_VEHICLE',
-        interests: ['Heritage', 'Spiritual'],
-        accessibilityWheelchair: false,
-        accessibilityVision: false,
-        accessibilityHearing: false,
-        accessibilityCognitive: false,
-        walkingToleranceMinutes: 30,
-        indoorOutdoorPreference: 'mixed',
-        localBusinessPreference: false,
-      },
+      ...plannerPayload,
     });
     const b = r.body as Record<string, unknown>;
     const data = b.data as Record<string, unknown>;
@@ -320,6 +337,22 @@ async function testPlanner() {
       return { ...r, ok: true };
     }
     return r;
+  });
+
+  await test('POST /planner/generate invalid payload -> 400', async () => {
+    const r = await req('POST', `${API}/planner/generate`, { destinationId: destId, days: 0 });
+    return { ...r, ok: r.status === 400 };
+  });
+
+  await test('POST /planner/generate saveTrip without token -> 401', async () => {
+    const savedToken = authToken;
+    authToken = '';
+    const r = await req('POST', `${API}/planner/generate`, {
+      ...plannerPayload,
+      saveTrip: true,
+    });
+    authToken = savedToken;
+    return { ...r, ok: r.status === 401 };
   });
 }
 
@@ -330,9 +363,229 @@ async function testLiveData() {
     return req('GET', `${API}/live/weather?lat=20.2961&lon=85.8245`);
   });
 
+  await test('GET /live/weather invalid latitude -> 400', async () => {
+    const r = await req('GET', `${API}/live/weather?lat=200&lon=85.8245`);
+    return { ...r, ok: r.status === 400 };
+  });
+
   // Note: the route endpoint is /live/route not /live/transport
   await test('GET /live/route (routing between two Bhubaneswar sites)', async () => {
     return req('GET', `${API}/live/route?startLat=20.2381&startLon=85.8336&endLat=20.2548&endLon=85.8431`);
+  });
+}
+
+async function testServices() {
+  await test('GET /services/exchange-rates', async () => {
+    return req('GET', `${API}/services/exchange-rates`);
+  });
+
+  await test('GET /services/holidays', async () => {
+    const year = new Date().getFullYear();
+    return req('GET', `${API}/services/holidays?countryCode=IN&year=${year}`);
+  });
+
+  await test('GET /services/country-info/IN', async () => {
+    return req('GET', `${API}/services/country-info/IN`);
+  });
+
+  await test('GET /services/safety-pulse', async () => {
+    return req('GET', `${API}/services/safety-pulse`);
+  });
+}
+
+async function testEmergency() {
+  await test('GET /emergency national contacts', async () => {
+    const r = await req('GET', `${API}/emergency`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    const contacts = data.contacts as unknown[];
+    if (r.ok && (!Array.isArray(contacts) || contacts.length === 0)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /emergency with destination slug', async () => {
+    const r = await req('GET', `${API}/emergency?destinationId=bhubaneswar-odisha`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    const destination = data.destination as Record<string, unknown> | null;
+    const contacts = data.contacts as unknown[];
+    if (r.ok && (!destination?.id || contacts.length <= 7)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /emergency unsupported country -> 400', async () => {
+    const r = await req('GET', `${API}/emergency?countryCode=US`);
+    return { ...r, ok: r.status === 400 };
+  });
+}
+
+async function testGuide() {
+  await test('GET /guide/destinations/:id', async () => {
+    const r = await req('GET', `${API}/guide/destinations/bhubaneswar-odisha`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    const attractions = data.attractions as unknown[];
+    if (r.ok && (!Array.isArray(attractions) || attractions.length === 0)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /guide/attractions/:id', async () => {
+    const r = await req('GET', `${API}/guide/attractions/lingaraj-temple`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    const facts = data.facts as unknown[];
+    if (r.ok && (!Array.isArray(facts) || facts.length === 0)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /guide/attractions/:id unknown -> 404', async () => {
+    const r = await req('GET', `${API}/guide/attractions/nonexistent-attraction`);
+    return { ...r, ok: r.status === 404 };
+  });
+}
+
+async function testBudget() {
+  await test('GET /budget/destinations/:id', async () => {
+    const r = await req('GET', `${API}/budget/destinations/bhubaneswar-odisha?travellers=2`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    if (r.ok && typeof data.totalAmount !== 'number') return { ...r, ok: false };
+    return r;
+  });
+
+  await test('POST /budget/estimate', async () => {
+    const r = await req('POST', `${API}/budget/estimate`, {
+      attractionIds: ['lingaraj-temple', 'odisha-state-museum'],
+      travellerType: 'INDIAN',
+      travellers: 2,
+    });
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    const lineItems = data.lineItems as unknown[];
+    if (r.ok && (typeof data.totalAmount !== 'number' || !Array.isArray(lineItems) || lineItems.length !== 2)) {
+      return { ...r, ok: false };
+    }
+    return r;
+  });
+
+  await test('POST /budget/estimate invalid payload -> 400', async () => {
+    const r = await req('POST', `${API}/budget/estimate`, { attractionIds: [], travellers: 0 });
+    return { ...r, ok: r.status === 400 };
+  });
+}
+
+async function testPublicTripShare() {
+  await test('GET /trips/share/:token invalid token -> 400', async () => {
+    const r = await req('GET', `${API}/trips/share/short`);
+    return { ...r, ok: r.status === 400 };
+  });
+
+  await test('GET /trips/share/:token/export invalid token -> 400', async () => {
+    const r = await req('GET', `${API}/trips/share/short/export`);
+    return { ...r, ok: r.status === 400 };
+  });
+}
+
+async function testSearch() {
+  await test('GET /search?q=temple', async () => {
+    const r = await req('GET', `${API}/search?q=temple`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as unknown[];
+    if (r.ok && (!Array.isArray(data) || data.length === 0)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /search invalid query -> 400', async () => {
+    const r = await req('GET', `${API}/search?q=x`);
+    return { ...r, ok: r.status === 400 };
+  });
+}
+
+async function testNearby() {
+  await test('GET /nearby around Bhubaneswar', async () => {
+    const r = await req('GET', `${API}/nearby?lat=20.2961&lon=85.8245&radiusKm=20&limit=5`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as unknown[];
+    if (r.ok && (!Array.isArray(data) || data.length === 0)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /nearby with destination slug', async () => {
+    const r = await req('GET', `${API}/nearby?lat=20.2961&lon=85.8245&radiusKm=20&destinationId=bhubaneswar-odisha`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as unknown[];
+    if (r.ok && (!Array.isArray(data) || data.length === 0)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /nearby invalid latitude -> 400', async () => {
+    const r = await req('GET', `${API}/nearby?lat=200&lon=85.8245`);
+    return { ...r, ok: r.status === 400 };
+  });
+}
+
+async function testLocalBusinesses() {
+  await test('GET /local-businesses', async () => {
+    const r = await req('GET', `${API}/local-businesses?limit=5`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as unknown[];
+    if (r.ok && !Array.isArray(data)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /local-businesses with destination slug', async () => {
+    const r = await req('GET', `${API}/local-businesses?destinationId=bhubaneswar-odisha&locallyOwned=true`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as unknown[];
+    if (r.ok && !Array.isArray(data)) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /local-businesses invalid limit -> 400', async () => {
+    const r = await req('GET', `${API}/local-businesses?limit=999`);
+    return { ...r, ok: r.status === 400 };
+  });
+}
+
+async function testCrowd() {
+  await test('GET /crowd/attractions/:attractionId latest', async () => {
+    const r = await req('GET', `${API}/crowd/attractions/lingaraj-temple`);
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    if (r.ok && data?.attractionId === undefined) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /crowd/attractions/:attractionId unknown -> 404', async () => {
+    const r = await req('GET', `${API}/crowd/attractions/nonexistent-attraction`);
+    return { ...r, ok: r.status === 404 };
+  });
+
+  await test('POST /crowd/reports without token -> 401', async () => {
+    const saved = authToken;
+    authToken = '';
+    const r = await req('POST', `${API}/crowd/reports`, {
+      attractionId: 'lingaraj-temple',
+      currentCrowdLevel: 'HIGH',
+      capacityValue: 250,
+    });
+    authToken = saved;
+    return { ...r, ok: r.status === 401 };
+  });
+}
+
+async function testCrowdAuthenticated() {
+  await test('POST /crowd/reports', async () => {
+    const r = await req('POST', `${API}/crowd/reports`, {
+      attractionId: attrId || 'lingaraj-temple',
+      currentCrowdLevel: 'MODERATE',
+      capacityValue: 125,
+    });
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    if (r.ok) crowdRecordId = data.id as string;
+    if (r.ok && data.verificationStatus !== 'COMMUNITY') return { ...r, ok: false };
+    return r;
   });
 }
 
@@ -363,9 +616,82 @@ async function testTrips() {
     return req('GET', `${API}/trips/${tripId}`);
   });
 
+  await test('GET /trips/:id/export without snapshot -> 409', async () => {
+    if (!tripId) return { ok: false, status: 0, body: {} };
+    const r = await req('GET', `${API}/trips/${tripId}/export`);
+    return { ...r, ok: r.status === 409 };
+  });
+
+  await test('POST /trips/:id/snapshot', async () => {
+    if (!tripId) return { ok: false, status: 0, body: {} };
+    return req('POST', `${API}/trips/${tripId}/snapshot`, {
+      itinerarySnapshot: {
+        destinationId: destId,
+        days: 1,
+        itineraryItems: [
+          { dayNumber: 1, sequence: 1, attractionName: 'Lingaraj Temple', startTime: '09:00', endTime: '10:30', explanationText: 'Heritage stop from the saved API smoke itinerary.' },
+        ],
+      },
+    });
+  });
+
+  await test('GET /trips/:id/export PDF', async () => {
+    if (!tripId) return { ok: false, status: 0, body: {} };
+    const r = await reqRaw('GET', `${API}/trips/${tripId}/export`);
+    const header = new Uint8Array(r.body.slice(0, 5));
+    const startsWithPdf = header[0] === 37 && header[1] === 80 && header[2] === 68 && header[3] === 70 && header[4] === 45;
+    return { ok: r.ok && r.headers.get('content-type')?.includes('application/pdf') === true && startsWithPdf, status: r.status, body: {} };
+  });
+
   await test('PATCH /trips/:id (update status)', async () => {
     if (!tripId) return { ok: false, status: 0, body: {} };
     return req('PATCH', `${API}/trips/${tripId}`, { status: 'PLANNED' });
+  });
+
+  await test('PATCH /trips/:id (enable public share)', async () => {
+    if (!tripId) return { ok: false, status: 0, body: {} };
+    const r = await req('PATCH', `${API}/trips/${tripId}`, { isPublic: true });
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    if (r.ok) shareToken = data.shareToken as string;
+    if (r.ok && !shareToken) return { ...r, ok: false };
+    return r;
+  });
+
+  await test('GET /trips/share/:token/export PDF', async () => {
+    if (!shareToken) return { ok: false, status: 0, body: {} };
+    const saved = authToken;
+    authToken = '';
+    const r = await reqRaw('GET', `${API}/trips/share/${shareToken}/export`);
+    authToken = saved;
+    const header = new Uint8Array(r.body.slice(0, 5));
+    const startsWithPdf = header[0] === 37 && header[1] === 80 && header[2] === 68 && header[3] === 70 && header[4] === 45;
+    return { ok: r.ok && r.headers.get('content-type')?.includes('application/pdf') === true && startsWithPdf, status: r.status, body: {} };
+  });
+
+  await test('GET /trips/share/:token', async () => {
+    if (!shareToken) return { ok: false, status: 0, body: {} };
+    const saved = authToken;
+    authToken = '';
+    const r = await req('GET', `${API}/trips/share/${shareToken}`);
+    authToken = saved;
+    return r;
+  });
+
+  await test('PATCH /trips/:id invalid dates -> 400', async () => {
+    if (!tripId) return { ok: false, status: 0, body: {} };
+    const r = await req('PATCH', `${API}/trips/${tripId}`, {
+      startDate: new Date(Date.now() + 20 * 86400000).toISOString(),
+      endDate: new Date(Date.now() + 19 * 86400000).toISOString(),
+    });
+    return { ...r, ok: r.status === 400 };
+  });
+
+  await test('DELETE /trips/:id', async () => {
+    if (!tripId) return { ok: false, status: 0, body: {} };
+    const r = await req('DELETE', `${API}/trips/${tripId}`);
+    if (r.ok) tripId = '';
+    return r;
   });
 }
 
@@ -396,12 +722,61 @@ async function testFavorites() {
 
 async function testFeedback() {
   await test('POST /feedback', async () => {
-    return req('POST', `${API}/feedback`, {
+    const r = await req('POST', `${API}/feedback`, {
       entityType: 'ATTRACTION',     // uppercase enum as schema requires
-      entityId: attrId || 'attr-lingaraj-temple',
+      entityId: attrId || 'lingaraj-temple',
       feedbackType: 'INACCURATE',
       comment: 'The temple now opens at 8am, not 6am.',
     });
+    const b = r.body as Record<string, unknown>;
+    const data = b.data as Record<string, unknown>;
+    if (r.ok) feedbackId = data.id as string;
+    return r;
+  });
+}
+
+async function testFeedbackAdminAccess() {
+  const uuid = '00000000-0000-4000-8000-000000000000';
+
+  await test('GET /feedback/admin/review-queue without token -> 401', async () => {
+    const saved = authToken;
+    authToken = '';
+    const r = await req('GET', `${API}/feedback/admin/review-queue`);
+    authToken = saved;
+    return { ...r, ok: r.status === 401 };
+  });
+
+  await test('PATCH /feedback/admin/:id/review without token -> 401', async () => {
+    const saved = authToken;
+    authToken = '';
+    const r = await req('PATCH', `${API}/feedback/admin/${uuid}/review`, { status: 'REVIEWED' });
+    authToken = saved;
+    return { ...r, ok: r.status === 401 };
+  });
+
+  await test('POST /feedback/admin/facts/:factId/reverify without token -> 401', async () => {
+    const saved = authToken;
+    authToken = '';
+    const r = await req('POST', `${API}/feedback/admin/facts/${uuid}/reverify`, { verificationStatus: 'VERIFIED' });
+    authToken = saved;
+    return { ...r, ok: r.status === 401 };
+  });
+
+  if (!authToken) return;
+
+  await test('GET /feedback/admin/review-queue with token', async () => {
+    const r = await req('GET', `${API}/feedback/admin/review-queue`);
+    return { ...r, ok: r.status === 200 || r.status === 403 };
+  });
+
+  await test('PATCH /feedback/admin/:id/review with token invalid UUID', async () => {
+    const r = await req('PATCH', `${API}/feedback/admin/not-a-uuid/review`, { status: 'REVIEWED' });
+    return { ...r, ok: r.status === 400 || r.status === 403 };
+  });
+
+  await test('POST /feedback/admin/facts/:factId/reverify with token invalid UUID', async () => {
+    const r = await req('POST', `${API}/feedback/admin/facts/not-a-uuid/reverify`, { verificationStatus: 'VERIFIED' });
+    return { ...r, ok: r.status === 400 || r.status === 403 };
   });
 }
 
@@ -415,38 +790,42 @@ async function testAnalytics() {
   });
 }
 
-async function testAuthLogout() {
-  await test('POST /auth/logout', async () => {
-    return req('POST', `${API}/auth/logout`, { refreshToken: refreshTok });
-  });
-
-  // After logout, refresh should fail. Rate limiter may also fire (429) — both are valid rejections.
-  await test('POST /auth/refresh after logout → 401 or 429', async () => {
-    const r = await req('POST', `${API}/auth/refresh`, { refreshToken: refreshTok });
-    return { ...r, ok: r.status === 401 || r.status === 429 };
-  });
-}
-
 // ─── Run All ─────────────────────────────────────────────────────────────────
 async function main() {
   console.log('🧪 MargDarshak API Test Suite');
   console.log(`   Target: ${BASE}`);
   console.log(`   Time:   ${new Date().toISOString()}\n`);
 
-  // Ordered — auth must come first to populate token
+  // Public checks first. Auth-specific checks use a Supabase access token if provided.
   await testHealth();
   await testAuth();
-  await testUsers();
   await testKnowledge();
   await testAttractions();
   await testNLU();
   await testPlanner();
   await testLiveData();
-  await testTrips();
-  await testFavorites();
-  await testFeedback();
-  await testAnalytics();
-  await testAuthLogout();
+  await testServices();
+  await testEmergency();
+  await testGuide();
+  await testBudget();
+  await testPublicTripShare();
+  await testSearch();
+  await testNearby();
+  await testLocalBusinesses();
+  await testCrowd();
+  await testFeedbackAdminAccess();
+
+  if (authToken) {
+    await testUsers();
+    await testTrips();
+    await testFavorites();
+    await testCrowdAuthenticated();
+    await testFeedback();
+    await testAnalytics();
+    await cleanupCreatedRecords();
+  } else {
+    addWarning('Authenticated route checks', 'Skipped; set API_TEST_BEARER_TOKEN to a Supabase access token.');
+  }
 
   // ─── Report ───────────────────────────────────────────────────────────────
   const pass = results.filter((r) => r.status === 'PASS').length;

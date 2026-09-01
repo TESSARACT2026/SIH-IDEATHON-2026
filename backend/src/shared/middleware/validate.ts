@@ -15,8 +15,8 @@ export function validate(schema: ZodSchema, target: ValidationTarget = 'body') {
       const parsed = schema.parse(req[target]);
       // Write back the parsed (and coerced) values
       if (target === 'body') req.body = parsed;
-      else if (target === 'query') (req as unknown as Record<string, unknown>).query = parsed;
-      else if (target === 'params') (req as unknown as Record<string, unknown>).params = parsed;
+      else if (target === 'query') Object.assign(req.query, parsed);
+      else if (target === 'params') Object.assign(req.params, parsed);
       next();
     } catch (err) {
       if (err instanceof ZodError) {

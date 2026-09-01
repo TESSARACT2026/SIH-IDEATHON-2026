@@ -19,6 +19,7 @@ const envSchema = z.object({
 
   // LLM
   GEMINI_API_KEY: z.string().min(1).default('mock-gemini-api-key-dev'),
+  GEMINI_MODEL: z.string().min(1).default('gemini-3.6-flash'),
 
   // Routing
   ROUTING_API_KEY: z.string().min(1).default('mock-routing-api-key-dev'),
@@ -28,6 +29,7 @@ const envSchema = z.object({
   ACCESS_TOKEN_EXPIRY: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRY_DAYS: z.coerce.number().default(7),
   COOKIE_DOMAIN: z.string().optional(),
+  ADMIN_EMAILS: z.string().default(''),
 
   // App
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

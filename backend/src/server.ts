@@ -86,10 +86,15 @@ import favoritesRouter from './modules/favorites/index.js';
 import tripsRouter from './modules/trips/index.js';
 import servicesRouter from './modules/services/index.js';
 import analyticsRouter from './modules/analytics/index.js';
-import { requireAuth } from './shared/middleware/auth.js';
+import searchRouter from './modules/search/index.js';
+import nearbyRouter from './modules/nearby/index.js';
+import localBusinessesRouter from './modules/local-businesses/index.js';
+import crowdRouter from './modules/crowd/index.js';
+import emergencyRouter from './modules/emergency/index.js';
+import guideRouter from './modules/guide/index.js';
+import budgetRouter from './modules/budget/index.js';
 
 // ─── API v1 Routes ──────────────────────────────────────────────────────────
-// app.use('/api/v1', requireAuth);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/knowledge', knowledgeRouter);
 app.use('/api/v1/attractions', attractionsRouter);
@@ -101,6 +106,13 @@ app.use('/api/v1/favorites', favoritesRouter);
 app.use('/api/v1/trips', tripsRouter);
 app.use('/api/v1/services', servicesRouter);
 app.use('/api/v1/analytics', analyticsRouter);
+app.use('/api/v1/search', searchRouter);
+app.use('/api/v1/nearby', nearbyRouter);
+app.use('/api/v1/local-businesses', localBusinessesRouter);
+app.use('/api/v1/crowd', crowdRouter);
+app.use('/api/v1/emergency', emergencyRouter);
+app.use('/api/v1/guide', guideRouter);
+app.use('/api/v1/budget', budgetRouter);
 
 // ─── 404 Handler ────────────────────────────────────────────────────────────
 app.use((_req, res) => {

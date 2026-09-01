@@ -27,9 +27,10 @@ import { prisma } from '../db/index.js';
  */
 async function extractToken(req: Request): Promise<AuthPayload | null> {
   const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) return null;
+  const cookieToken = typeof req.cookies?.access_token === 'string' ? req.cookies.access_token : null;
+  const token = header?.startsWith('Bearer ') ? header.slice(7) : cookieToken;
+  if (!token) return null;
 
-  const token = header.slice(7);
   try {
     const { data: { user }, error } = await supabase.auth.getUser(token);
     if (error || !user) return null;
@@ -69,6 +70,45 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       message: 'Authentication required. Provide a valid Bearer token.',
     },
   });
+}
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user) {
+    res.status(401).json({
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Authentication required. Provide a valid Bearer token.',
+      },
+    });
+    return;
+  }
+
+  const adminEmails = env.ADMIN_EMAILS
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!adminEmails.length) {
+    res.status(403).json({
+      error: {
+        code: 'ADMIN_NOT_CONFIGURED',
+        message: 'Admin access is not configured.',
+      },
+    });
+    return;
+  }
+
+  if (!adminEmails.includes(req.user.email.toLowerCase())) {
+    res.status(403).json({
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Admin access required.',
+      },
+    });
+    return;
+  }
+
+  next();
 }
 
 /**

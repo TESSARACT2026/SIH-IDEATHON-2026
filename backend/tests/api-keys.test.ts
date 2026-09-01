@@ -64,5 +64,5 @@ describe('API Keys and External Services Health', () => {
       console.error('OpenRouteService API authentication failed:', error);
       throw error;
     }
-  });
+  }, 15000);
 });
