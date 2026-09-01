@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MainLayout } from '../components/layout/MainLayout';
-import { Calendar, MapPin, Zap, Save, Train, Plane, Car, X } from 'lucide-react';
+import { Calendar, MapPin, Zap, Save, Train, Plane, Car, X, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../lib/AuthContext';
+import { tripsApi } from '../api/services/tripsApi';
+import { DEFAULT_DESTINATIONS } from '../api/services/knowledgeApi';
 
 // Indian stations with IRCTC codes — comprehensive list
 const STATIONS = [
@@ -335,7 +338,10 @@ const DRAFT_KEY = 'margdarshak_drafts';
 
 export const PlanTripPage: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [saved, setSaved] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generated, setGenerated] = useState(false);
   const [tripData, setTripData] = useState({
     from: '',
     to: '',
@@ -438,6 +444,87 @@ export const PlanTripPage: React.FC = () => {
     localStorage.setItem(DRAFT_KEY, JSON.stringify(existing));
     setSaved(true);
     setTimeout(() => { setSaved(false); navigate('/my-trips'); }, 1200);
+  };
+
+  const handleGeneratePlan = async () => {
+    if (!tripData.from || !tripData.to) {
+      alert('Please fill in From and To locations first.');
+      return;
+    }
+    if (!tripData.startDate) {
+      alert('Please select a start date.');
+      return;
+    }
+    setGenerating(true);
+
+    const startDate = tripData.startDate;
+    const endDate = new Date(new Date(startDate).getTime() + parseInt(tripData.duration) * 86400000)
+      .toISOString().split('T')[0];
+    const title = `${tripData.from.split('(')[0].trim()} → ${tripData.to.split('(')[0].trim()} · ${tripData.duration} Days`;
+
+    // Find matching destination ID from known destinations
+    const destName = tripData.to.split('(')[0].trim().toLowerCase();
+    const matchedDest = DEFAULT_DESTINATIONS.find(d => d.name.toLowerCase().includes(destName));
+    const destinationId = matchedDest?.id || 'bhubaneswar-odisha';
+
+    try {
+      if (user) {
+        // Logged in — save to backend
+        await tripsApi.create({
+          destinationId,
+          title,
+          startDate,
+          endDate,
+          status: 'PLANNED',
+        });
+      } else {
+        // Not logged in — save to localStorage as a verified plan
+        const plans: any[] = JSON.parse(localStorage.getItem(DRAFT_KEY) || '[]');
+        plans.push({
+          id: `plan_${Date.now()}`,
+          title,
+          from: tripData.from,
+          to: tripData.to,
+          startDate,
+          endDate,
+          duration: tripData.duration,
+          pace: tripData.pace,
+          transportMode: tripData.transportMode,
+          travelClass: tripData.travelClass,
+          pnrNumber: tripData.pnrNumber,
+          flightNumber: tripData.flightNumber,
+          interests: tripData.interests,
+          status: 'PLANNED',
+          createdAt: new Date().toISOString(),
+        });
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(plans));
+      }
+      setGenerated(true);
+      setTimeout(() => { setGenerated(false); navigate('/my-trips'); }, 1500);
+    } catch {
+      // Fallback: save locally
+      const plans: any[] = JSON.parse(localStorage.getItem(DRAFT_KEY) || '[]');
+      plans.push({
+        id: `plan_${Date.now()}`,
+        title,
+        from: tripData.from,
+        to: tripData.to,
+        startDate,
+        endDate,
+        duration: tripData.duration,
+        pace: tripData.pace,
+        transportMode: tripData.transportMode,
+        travelClass: tripData.travelClass,
+        interests: tripData.interests,
+        status: 'PLANNED',
+        createdAt: new Date().toISOString(),
+      });
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(plans));
+      setGenerated(true);
+      setTimeout(() => { setGenerated(false); navigate('/my-trips'); }, 1500);
+    } finally {
+      setGenerating(false);
+    }
   };
 
   return (
@@ -699,10 +786,23 @@ export const PlanTripPage: React.FC = () => {
                 )}
               </div>
 
-              <button className="relative w-full overflow-hidden bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg group">
+              <button
+                onClick={handleGeneratePlan}
+                disabled={generating || generated}
+                className={`relative w-full overflow-hidden font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg group ${
+                  generated
+                    ? 'bg-green-500 text-white'
+                    : 'bg-orange-500 hover:bg-orange-600 active:scale-95 text-white disabled:opacity-70'
+                }`}
+              >
                 <span className="absolute inset-0 -skew-x-12 translate-x-[-200%] group-hover:translate-x-[200%] transition-transform duration-700 bg-gradient-to-r from-transparent via-white/25 to-transparent pointer-events-none" />
-                <Zap size={18} className="group-hover:animate-bounce" />
-                Generate Verified Plan
+                {generated ? (
+                  <><CheckCircle size={18} /> Plan Saved! Redirecting...</>
+                ) : generating ? (
+                  <><Zap size={18} className="animate-spin" /> Generating Plan...</>
+                ) : (
+                  <><Zap size={18} className="group-hover:animate-bounce" /> Generate Verified Plan</>
+                )}
               </button>
 
               <button

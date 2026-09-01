@@ -8,8 +8,7 @@ import { guideApi } from '../api/services/guideApi';
 import { budgetApi } from '../api/services/budgetApi';
 import { emergencyApi } from '../api/services/emergencyApi';
 import { localBusinessesApi } from '../api/services/localBusinessesApi';
-
-const heroImage = 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=1200&h=600&fit=crop';
+import { getDestinationVisual } from '../components/dashboard/PopularDestinations';
 
 export const DestinationPage: React.FC = () => {
   const { id = '' } = useParams<{ id: string }>();
@@ -72,6 +71,8 @@ export const DestinationPage: React.FC = () => {
   const budgetLabel = budget ? `${budget.currency} ${budget.totalAmount.toLocaleString()}` : 'Calculating';
   const locationLabel = [destination.region, destination.country].filter(Boolean).join(', ');
   const isDemoData = knowledgeApi.isUsingFallbackData();
+  const visual = getDestinationVisual(destination.name, 0);
+  const heroImage = visual.image;
 
   return (
     <MainLayout>
