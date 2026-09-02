@@ -25,6 +25,7 @@ import { DestinationPage } from './pages/DestinationPage';
 import { DestinationsPage } from './pages/DestinationsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { GroupPlanPage } from './pages/GroupPlanPage';
+import { PreBookedCabsPage } from './pages/PreBookedCabsPage';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 import { VoiceNav } from './components/ui/VoiceNav';
 const queryClient = new QueryClient({
@@ -127,6 +128,7 @@ function App() {
                 <Route path="/destinations" element={<DestinationsPage />} />
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                 <Route path="/group/:code?" element={<GroupPlanPage />} />
+                <Route path="/cabs" element={<PreBookedCabsPage />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Routes>
             </BrowserRouter>
