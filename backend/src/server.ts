@@ -18,7 +18,7 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'https:'],
-      connectSrc: ["'self'", env.CORS_ORIGIN],
+      connectSrc: ["'self'", ...env.CORS_ORIGIN],
       fontSrc: ["'self'", 'https:', 'data:'],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: [],
