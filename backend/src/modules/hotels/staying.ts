@@ -7,6 +7,7 @@ import type { z } from 'zod';
 
 type HotelOffersQuery = z.infer<typeof hotelOffersQuerySchema>;
 type FetchLike = typeof fetch;
+type StayingRequest = NonNullable<ReturnType<typeof stayingRequestFor>>;
 
 const allowedBookingHosts = [
   'airbnb.com',
@@ -18,6 +19,9 @@ const allowedBookingHosts = [
   'tripadvisor.com',
   'vrbo.com',
 ];
+const stayingJobPollAttempts = 4;
+const stayingJobPollDelayMs = 1_000;
+const stayingJobPollMaxDelayMs = 2_000;
 const stayingOffersCache = new TTLMemoryCache<Awaited<ReturnType<typeof buildSuccessfulOffersResponse>>>(10 * 60 * 1000);
 
 export function buildHotelOffersResponse(meta: unknown, unavailable = hotelUnavailableState('OFFERS')) {
@@ -57,29 +61,36 @@ export async function getHotelOffers(query: HotelOffersQuery, fetchImpl: FetchLi
   }
 
   const response = await fetchStaying(request.path, request.params, fetchImpl);
-  if (response.status === 202) {
-    return buildHotelOffersResponse(query, {
-      code: 'HOTEL_OFFERS_ASYNC_PENDING',
-      message: 'Staying API accepted the request asynchronously. Retry offers after a short delay.',
-      action: 'RETRY_LATER',
-    });
-  }
+  let payload: Record<string, unknown>;
 
-  if (!response.ok) {
+  if (response.status === 202) {
+    const job = await pollStayingJob(response, fetchImpl);
+    if (job.status !== 'COMPLETED') {
+      return buildHotelOffersResponse(query, {
+        code: job.status === 'FAILED' ? 'HOTEL_OFFERS_PROVIDER_ERROR' : 'HOTEL_OFFERS_ASYNC_PENDING',
+        message: job.message ?? 'Staying API is still preparing live offers. Retry offers after a short delay.',
+        action: 'RETRY_LATER',
+      });
+    }
+    payload = job.payload;
+  } else if (!response.ok) {
     return buildHotelOffersResponse(query, {
       code: 'HOTEL_OFFERS_PROVIDER_ERROR',
       message: `Staying API did not return usable offers for this request (${response.status}).`,
       action: response.status === 401 ? 'CONFIGURE_PROVIDER_KEY' : 'RETRY_LATER',
     });
+  } else {
+    payload = await response.json() as Record<string, unknown>;
   }
 
-  const payload = await response.json() as Record<string, unknown>;
-  const offers = normalizeStayingOffers(payload.data, query, fetchedAt).slice(0, query.limit);
+  const warnings = warningsFromStayingMeta(payload.meta);
+  const sandboxSample = hasWarningCode(warnings, 'sandbox_data');
+  const offers = normalizeStayingOffers(payload.data, query, fetchedAt, sandboxSample).slice(0, query.limit);
   if (offers.length === 0) {
     return buildHotelOffersResponse(query, hotelUnavailableState('OFFERS'));
   }
 
-  const result = buildSuccessfulOffersResponse(query, request, offers, fetchedAt, warningsFromStayingMeta(payload.meta));
+  const result = buildSuccessfulOffersResponse(query, request, offers, fetchedAt, warnings);
   stayingOffersCache.set(cacheKey, result);
   return result;
 }
@@ -144,7 +155,7 @@ function stayingRequestFor(query: HotelOffersQuery) {
 
 function buildSuccessfulOffersResponse(
   query: HotelOffersQuery,
-  request: NonNullable<ReturnType<typeof stayingRequestFor>>,
+  request: StayingRequest,
   offers: HotelOffer[],
   fetchedAt: string,
   warnings: unknown[],
@@ -178,11 +189,15 @@ function decodeStayingId(id: string): { platform: HotelOffersQuery['platform']; 
 }
 
 async function fetchStaying(path: string, params: Record<string, string | number | undefined>, fetchImpl: FetchLike) {
-  const url = new URL(`${env.STAYING_API_BASE_URL.replace(/\/$/, '')}${path}`);
+  const url = stayingUrl(path);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) url.searchParams.set(key, String(value));
   }
 
+  return fetchStayingUrl(url, fetchImpl);
+}
+
+async function fetchStayingUrl(url: URL, fetchImpl: FetchLike) {
   return fetchImpl(url, {
     headers: {
       Accept: 'application/json',
@@ -192,18 +207,105 @@ async function fetchStaying(path: string, params: Record<string, string | number
   });
 }
 
-function normalizeStayingOffers(data: unknown, query: HotelOffersQuery, fetchedAt: string): HotelOffer[] {
+async function pollStayingJob(response: Response, fetchImpl: FetchLike): Promise<
+  | { status: 'COMPLETED'; payload: Record<string, unknown> }
+  | { status: 'PENDING'; message?: string }
+  | { status: 'FAILED'; message?: string }
+> {
+  const acceptedPayload = await response.json().catch(() => ({})) as Record<string, unknown>;
+  const jobUrl = stayingJobUrl(acceptedPayload);
+  if (!jobUrl) return { status: 'PENDING' };
+
+  let delayMs = retryAfterMs(response, stayingJobPollDelayMs);
+  for (let attempt = 0; attempt < stayingJobPollAttempts; attempt += 1) {
+    if (delayMs > 0) await sleep(delayMs);
+
+    const pollResponse = await fetchStayingUrl(jobUrl, fetchImpl);
+    if (pollResponse.status === 202) {
+      delayMs = retryAfterMs(pollResponse, stayingJobPollDelayMs);
+      continue;
+    }
+
+    const jobPayload = await pollResponse.json().catch(() => ({})) as Record<string, unknown>;
+    if (!pollResponse.ok) {
+      return { status: 'FAILED', message: `Staying API job poll failed (${pollResponse.status}).` };
+    }
+
+    const status = textValue(asRecord(jobPayload.data).status)?.toLowerCase();
+    if (status === 'completed') {
+      const payload = completedJobPayload(jobPayload);
+      return payload ? { status: 'COMPLETED', payload } : { status: 'FAILED', message: 'Staying API job completed without offer data.' };
+    }
+    if (status === 'failed') return { status: 'FAILED', message: jobFailureMessage(jobPayload) };
+    if (!status && Object.prototype.hasOwnProperty.call(jobPayload, 'data')) return { status: 'COMPLETED', payload: jobPayload };
+
+    delayMs = retryAfterMs(pollResponse, stayingJobPollDelayMs);
+  }
+
+  return { status: 'PENDING' };
+}
+
+function stayingJobUrl(payload: Record<string, unknown>) {
+  const data = asRecord(payload.data);
+  const jobId = textValue(data.jobId) ?? textValue(data.id) ?? textValue(payload.jobId) ?? textValue(payload.id);
+  if (jobId) return stayingUrl(`/jobs/${encodeURIComponent(jobId)}`);
+
+  const pollUrl = textValue(data.pollUrl) ?? textValue(payload.pollUrl);
+  if (!pollUrl) return null;
+
+  const base = new URL(env.STAYING_API_BASE_URL);
+  const url = new URL(pollUrl, base);
+  return url.origin === base.origin ? url : null;
+}
+
+function stayingUrl(path: string) {
+  const base = new URL(env.STAYING_API_BASE_URL.replace(/\/$/, ''));
+  if (/^https?:\/\//i.test(path)) return new URL(path);
+
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  if (normalizedPath === base.pathname || normalizedPath.startsWith(`${base.pathname}/`)) {
+    return new URL(`${base.origin}${normalizedPath}`);
+  }
+  return new URL(`${base.href}${normalizedPath}`);
+}
+
+function completedJobPayload(payload: Record<string, unknown>) {
+  const data = asRecord(payload.data);
+  const result = data.result;
+  if (result === undefined) return null;
+
+  const resultRecord = asRecord(result);
+  if (Object.prototype.hasOwnProperty.call(resultRecord, 'data')) return resultRecord;
+  return { data: result, meta: data.meta ?? payload.meta };
+}
+
+function jobFailureMessage(payload: Record<string, unknown>) {
+  const error = asRecord(asRecord(payload.data).error);
+  return textValue(error.message) ?? 'Staying API async job failed for this request.';
+}
+
+function retryAfterMs(response: Response, fallbackMs: number) {
+  const seconds = Number(response.headers.get('Retry-After'));
+  const delayMs = Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : fallbackMs;
+  return Math.min(delayMs, stayingJobPollMaxDelayMs);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeStayingOffers(data: unknown, query: HotelOffersQuery, fetchedAt: string, sandboxSample: boolean): HotelOffer[] {
   const records = dataRecords(data);
   return records
     .flatMap((record) => {
       const nestedOffers = dataRecords(record.offers ?? record.prices ?? record.results);
       return nestedOffers.length ? nestedOffers.map((offer) => ({ ...offer, parent: record })) : [record];
     })
-    .map((record, index) => normalizeStayingOffer(record, query, fetchedAt, index))
+    .map((record, index) => normalizeStayingOffer(record, query, fetchedAt, index, sandboxSample))
     .filter((offer): offer is HotelOffer => Boolean(offer));
 }
 
-function normalizeStayingOffer(record: Record<string, unknown>, query: HotelOffersQuery, fetchedAt: string, index: number): HotelOffer | null {
+function normalizeStayingOffer(record: Record<string, unknown>, query: HotelOffersQuery, fetchedAt: string, index: number, sandboxSample: boolean): HotelOffer | null {
   const parent = asRecord(record.parent);
   const price = asRecord(record.price);
   const fees = asRecord(record.fees ?? record.taxesAndFees);
@@ -251,7 +353,7 @@ function normalizeStayingOffer(record: Record<string, unknown>, query: HotelOffe
     bookingUrl,
     refundable: booleanValue(record.refundable),
     source: stayingSource(fetchedAt),
-    confidence: totalAmount !== null ? 'LIVE_PROVIDER' : 'PARTIAL_PROVIDER',
+    confidence: sandboxSample ? 'SANDBOX_SAMPLE' : totalAmount !== null ? 'LIVE_PROVIDER' : 'PARTIAL_PROVIDER',
   };
 }
 
@@ -268,6 +370,10 @@ function dataRecords(data: unknown): Record<string, unknown>[] {
 function warningsFromStayingMeta(meta: unknown) {
   const warnings = asRecord(meta).warnings;
   return Array.isArray(warnings) ? warnings : [];
+}
+
+function hasWarningCode(warnings: unknown[], code: string) {
+  return warnings.some((warning) => asRecord(warning).code === code);
 }
 
 function safeProviderUrl(value: string | null) {

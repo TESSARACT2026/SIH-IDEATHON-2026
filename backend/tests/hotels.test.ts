@@ -327,7 +327,7 @@ describe('hotel phases 8-13 provider offers and booking links', () => {
           currency: 'INR',
           bookingUrl: 'https://www.booking.com/hotel/in/utkal.html',
         },
-        meta: { warnings: [] },
+        meta: { warnings: [{ code: 'sandbox_data', message: 'sample data' }] },
       }), { status: 200 });
     };
 
@@ -348,7 +348,111 @@ describe('hotel phases 8-13 provider offers and booking links', () => {
         totalAmount: 3600,
         nightlyAmount: 1800,
         nights: 2,
+        confidence: 'SANDBOX_SAMPLE',
       });
+      expect(response.data.warnings[0]).toMatchObject({ code: 'sandbox_data' });
+    } finally {
+      env.STAYING_API_KEY = originalStayingKey;
+    }
+  });
+
+  it('polls a Staying async live job and returns normalized offers', async () => {
+    const originalStayingKey = env.STAYING_API_KEY;
+    env.STAYING_API_KEY = 'stay_live_key';
+    const calls: string[] = [];
+
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = new URL(input.toString());
+      calls.push(url.pathname);
+      if (url.pathname === '/v1/price-compare') {
+        return new Response(JSON.stringify({
+          data: { jobId: 'job_live_123', pollUrl: '/v1/jobs/job_live_123' },
+        }), { status: 202, headers: { 'Retry-After': '0' } });
+      }
+
+      expect(url.pathname).toBe('/v1/jobs/job_live_123');
+      return new Response(JSON.stringify({
+        data: {
+          status: 'completed',
+          result: {
+            data: {
+              offers: [{
+                platform: 'booking',
+                listingId: 'live-hotel-123',
+                hotelName: 'Live Hotel',
+                totalPrice: 7200,
+                nightlyPrice: 2400,
+                currency: 'INR',
+                bookingUrl: 'https://www.booking.com/hotel/in/live.html',
+              }],
+            },
+          },
+        },
+      }), { status: 200 });
+    };
+
+    try {
+      const response = await getHotelOffers({
+        hotelId: 'manual:live-hotel',
+        name: 'Live Hotel',
+        location: 'Bhubaneswar, Odisha',
+        checkIn: '2026-09-05',
+        checkOut: '2026-09-08',
+        adults: 2,
+        rooms: 1,
+        currency: 'INR',
+        limit: 5,
+      }, fetchImpl as typeof fetch);
+
+      expect(calls).toEqual(['/v1/price-compare', '/v1/jobs/job_live_123']);
+      expect(response.data.offers[0]).toMatchObject({
+        provider: 'STAYING',
+        platform: 'booking',
+        hotelName: 'Live Hotel',
+        totalAmount: 7200,
+        nightlyAmount: 2400,
+        confidence: 'LIVE_PROVIDER',
+      });
+    } finally {
+      env.STAYING_API_KEY = originalStayingKey;
+    }
+  });
+
+  it('keeps async Staying jobs retryable when live offers are still running', async () => {
+    const originalStayingKey = env.STAYING_API_KEY;
+    env.STAYING_API_KEY = 'stay_live_key';
+    let polls = 0;
+
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = new URL(input.toString());
+      if (url.pathname === '/v1/price-compare') {
+        return new Response(JSON.stringify({
+          data: { jobId: 'job_live_pending' },
+        }), { status: 202, headers: { 'Retry-After': '0' } });
+      }
+
+      polls += 1;
+      return new Response(JSON.stringify({
+        data: { status: 'running' },
+      }), { status: 200, headers: { 'Retry-After': '0' } });
+    };
+
+    try {
+      const response = await getHotelOffers({
+        hotelId: 'manual:pending-hotel',
+        name: 'Pending Hotel',
+        location: 'Bhubaneswar, Odisha',
+        checkIn: '2026-09-05',
+        checkOut: '2026-09-08',
+        adults: 2,
+        rooms: 1,
+        currency: 'INR',
+        limit: 5,
+      }, fetchImpl as typeof fetch);
+
+      expect(polls).toBe(4);
+      expect(response.data.offers).toEqual([]);
+      expect(response.data.unavailable.code).toBe('HOTEL_OFFERS_ASYNC_PENDING');
     } finally {
       env.STAYING_API_KEY = originalStayingKey;
     }

@@ -53,7 +53,7 @@ export interface HotelOffer {
   bookingUrl: string | null;
   refundable: boolean | null;
   source: HotelSourceAttribution;
-  confidence: 'LIVE_PROVIDER' | 'PARTIAL_PROVIDER';
+  confidence: 'LIVE_PROVIDER' | 'PARTIAL_PROVIDER' | 'SANDBOX_SAMPLE';
 }
 
 export interface HotelTripFit {
