@@ -69,6 +69,17 @@ enum FeedbackType {
   OTHER
 }
 
+enum FeedbackReportType {
+  CLOSED
+  PRICE_CHANGED
+  ACCESSIBILITY_INCORRECT
+  HOURS_INCORRECT
+  ROAD_BLOCKED
+  OVERCROWDED
+  FACILITY_UNAVAILABLE
+  OTHER
+}
+
 enum TripStatus {
   DRAFT
   PLANNED
@@ -116,10 +127,11 @@ model User {
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
-  preferences UserPreference?
-  trips       Trip[]
-  feedback    Feedback[]
-  favorites   Favorite[]
+  preferences   UserPreference?
+  trips         Trip[]
+  feedback      Feedback[]
+  favorites     Favorite[]
+  groupSessions GroupSession[]
 
   @@map("users")
 }
@@ -164,6 +176,7 @@ model Destination {
   localBusinesses LocalBusiness[]
   trips           Trip[]
   favorites       Favorite[]
+  groupSessions   GroupSession[]
 
   @@map("destinations")
 }
@@ -324,6 +337,7 @@ model Trip {
   startDate         DateTime   @map("start_date")
   endDate           DateTime   @map("end_date")
   status            TripStatus @default(DRAFT)
+  plannerInput      Json?      @map("planner_input") // original request used for deterministic replanning
   itinerarySnapshot Json?      @map("itinerary_snapshot") // frozen snapshot of last generated itinerary
   isPublic          Boolean    @default(false) @map("is_public")
   shareToken        String?    @unique @map("share_token") // crypto-random, set when is_public=true
@@ -344,6 +358,7 @@ model Itinerary {
   tripId         String   @map("trip_id")
   generatedAt    DateTime @default(now()) @map("generated_at")
   plannerVersion String   @default("1.0.0") @map("planner_version")
+  plannerInput   Json?    @map("planner_input")
   rawPlan        Json?    @map("raw_plan")
   validated      Boolean  @default(false)
 
@@ -375,19 +390,54 @@ model ItineraryItem {
   @@map("itinerary_items")
 }
 
+// ─── Group Planning ─────────────────────────────────────────────────────────
+
+model GroupSession {
+  id            String   @id @default(uuid())
+  joinCode      String   @unique @map("join_code")
+  creatorId     String   @map("creator_id")
+  destinationId String   @map("destination_id")
+  startDate     DateTime @map("start_date")
+  days          Int
+  title         String   @default("Group Trip")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  creator      User               @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  destination  Destination        @relation(fields: [destinationId], references: [id])
+  participants GroupParticipant[]
+
+  @@index([creatorId])
+  @@index([destinationId])
+  @@map("group_sessions")
+}
+
+model GroupParticipant {
+  id          String   @id @default(uuid())
+  groupId     String   @map("group_id")
+  name        String
+  preferences Json
+  submittedAt DateTime @default(now()) @map("submitted_at")
+
+  group GroupSession @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, submittedAt])
+  @@map("group_participants")
+}
+
 // ─── Feedback ───────────────────────────────────────────────────────────────
 
 model Feedback {
-  id             String             @id @default(uuid())
-  userId         String             @map("user_id")
-  entityType     FeedbackEntityType @default(FACT) @map("entity_type")
-  entityId       String             @map("entity_id")
-  feedbackType   FeedbackType       @default(OTHER) @map("feedback_type")
-  factId         String?            @map("fact_id")
-  submittedValue String?            @map("submitted_value")
+  id             String              @id @default(uuid())
+  userId         String              @map("user_id")
+  entityType     FeedbackEntityType  @default(FACT) @map("entity_type")
+  entityId       String              @map("entity_id")
+  feedbackType   FeedbackType        @default(OTHER) @map("feedback_type")
+  reportType     FeedbackReportType? @map("report_type")
+  factId         String?             @map("fact_id")
+  submittedValue String?             @map("submitted_value")
   note           String?
-  status         FeedbackStatus     @default(PENDING)
-  createdAt      DateTime           @default(now()) @map("created_at")
+  status         FeedbackStatus      @default(PENDING)
+  createdAt      DateTime            @default(now()) @map("created_at")
 
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   fact Fact? @relation(fields: [factId], references: [id])

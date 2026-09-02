@@ -3,6 +3,8 @@ import { env } from '../src/shared/config/index.js';
 import { GoogleGenAI } from '@google/genai';
 import { prisma } from '../src/shared/db/index.js';
 
+const externalIt = process.env.RUN_EXTERNAL_TESTS === '1' ? it : it.skip;
+
 describe('API Keys and External Services Health', () => {
   it('should have all necessary environment variables', () => {
     expect(env.DATABASE_URL).toBeDefined();
@@ -10,7 +12,7 @@ describe('API Keys and External Services Health', () => {
     expect(env.ROUTING_API_KEY).toBeDefined();
   });
 
-  it('should connect to the Database (Supabase PostgreSQL)', async () => {
+  externalIt('should connect to the Database (Supabase PostgreSQL)', async () => {
     try {
       const result = await prisma.$queryRaw`SELECT 1 as result`;
       expect(result).toBeDefined();
@@ -22,7 +24,7 @@ describe('API Keys and External Services Health', () => {
     }
   });
 
-  it('should authenticate with Google Gemini API', async () => {
+  externalIt('should authenticate with Google Gemini API', async () => {
     try {
       const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
       // Fetch models
@@ -43,7 +45,7 @@ describe('API Keys and External Services Health', () => {
     }
   });
 
-  it('should authenticate with OpenRouteService API', async () => {
+  externalIt('should authenticate with OpenRouteService API', async () => {
     try {
       const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car', {
         method: 'POST',

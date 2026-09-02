@@ -46,6 +46,17 @@ export enum FeedbackStatus {
   REJECTED = 'REJECTED',
 }
 
+export enum FeedbackReportType {
+  CLOSED = 'CLOSED',
+  PRICE_CHANGED = 'PRICE_CHANGED',
+  ACCESSIBILITY_INCORRECT = 'ACCESSIBILITY_INCORRECT',
+  HOURS_INCORRECT = 'HOURS_INCORRECT',
+  ROAD_BLOCKED = 'ROAD_BLOCKED',
+  OVERCROWDED = 'OVERCROWDED',
+  FACILITY_UNAVAILABLE = 'FACILITY_UNAVAILABLE',
+  OTHER = 'OTHER',
+}
+
 // ─── Trip Status Enum ───────────────────────────────────────────────────────
 export enum TripStatus {
   DRAFT = 'DRAFT',

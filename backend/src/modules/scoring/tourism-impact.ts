@@ -20,7 +20,12 @@ import { z } from 'zod';
 import { prisma } from '../../shared/db/index.js';
 import { AppError } from '../../shared/middleware/errorHandler.js';
 import { resolveDestinationId } from '../../shared/utils/idAliases.js';
-import { generateItinerary, type PlannerInput, type PlanResult } from '../planner/engine.js';
+import {
+  generateItinerary,
+  localBusinessProximityScore,
+  type PlannerInput,
+  type PlanResult,
+} from '../planner/engine.js';
 
 const router = Router();
 
@@ -36,49 +41,157 @@ const impactSchema = z.object({
     accessibilityCognitive: z.boolean().default(false),
     interests: z.array(z.string().max(50)).max(20).default([]),
     transportPreference: z.enum(['WALKING', 'PUBLIC_TRANSIT', 'CAB', 'OWN_VEHICLE', 'MIXED']).default('MIXED'),
+    localBusinessPreference: z.boolean().default(false).optional(),
   }).strict(),
 }).strict();
+
+type ImpactLevel = 'Low' | 'Medium' | 'High';
 
 type ImpactMetrics = {
   popularRoute: {
     itemCount: number;
     avgCrowdLevel: string;
     highCrowdStops: number;
+    localBusinessStops: number;
+    travelDistanceKm: number;
+    environmentalSensitivityFlags: number;
+    culturalSensitivityFlags: number;
+    environmentalImpact: ImpactLevel;
+    culturalSensitivity: ImpactLevel;
+    impactScore: number;
   };
   responsibleRoute: {
     itemCount: number;
     avgCrowdLevel: string;
     highCrowdStops: number;
     localBusinessStops: number;
+    travelDistanceKm: number;
+    environmentalSensitivityFlags: number;
+    culturalSensitivityFlags: number;
+    environmentalImpact: ImpactLevel;
+    culturalSensitivity: ImpactLevel;
+    impactScore: number;
   };
   comparison: {
     crowdPressureDelta: string;
     localBusinessDelta: number;
+    travelDistanceDeltaKm: number;
+    environmentalSensitivityDelta: number;
+    culturalSensitivityDelta: number;
+    impactScoreDelta: number;
     message: string;
   };
 };
 
-// Count crowd levels from itinerary items by looking up the attractions
-async function countCrowdMetrics(plan: PlanResult) {
+type ImpactScoreInput = {
+  itemCount: number;
+  highCrowdStops: number;
+  localBusinessStops: number;
+  travelDistanceKm: number;
+  environmentalSensitivityFlags: number;
+  culturalSensitivityFlags: number;
+};
+
+function rounded(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+function impactLevel(penalty: number): ImpactLevel {
+  if (penalty <= 8) return 'Low';
+  if (penalty <= 18) return 'Medium';
+  return 'High';
+}
+
+export function distanceKm(
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number },
+) {
+  const toRadians = (value: number) => value * Math.PI / 180;
+  const lat1 = toRadians(from.latitude);
+  const lat2 = toRadians(to.latitude);
+  const deltaLat = toRadians(to.latitude - from.latitude);
+  const deltaLon = toRadians(to.longitude - from.longitude);
+  const a = Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function planTravelDistanceKm(
+  plan: Pick<PlanResult, 'itineraryItems'>,
+  attractionById: Map<string, { latitude: number; longitude: number }>,
+) {
+  let total = 0;
+  let last: { latitude: number; longitude: number } | null = null;
+
+  for (const item of plan.itineraryItems) {
+    const current = attractionById.get(item.entityId);
+    if (!current) continue;
+    if (last) total += distanceKm(last, current);
+    last = current;
+  }
+
+  return rounded(total);
+}
+
+export function tourismImpactSummary(input: ImpactScoreInput) {
+  const crowdPenalty = input.itemCount > 0 ? (input.highCrowdStops / input.itemCount) * 35 : 0;
+  const travelPenalty = Math.min(25, input.travelDistanceKm * 0.8);
+  const environmentalFlagPenalty = Math.min(20, input.environmentalSensitivityFlags * 10);
+  const culturalPenalty = Math.min(15, input.culturalSensitivityFlags * 7.5);
+  const localBonus = input.itemCount > 0 ? Math.min(15, (input.localBusinessStops / input.itemCount) * 15) : 0;
+
+  return {
+    impactScore: Math.max(0, Math.min(100, Math.round(100 - crowdPenalty - travelPenalty - environmentalFlagPenalty - culturalPenalty + localBonus))),
+    environmentalImpact: impactLevel(travelPenalty + environmentalFlagPenalty),
+    culturalSensitivity: impactLevel(culturalPenalty),
+  };
+}
+
+// Count impact signals from itinerary items by looking up the attractions
+async function countImpactMetrics(plan: PlanResult, tripStart: Date) {
   const entityIds = plan.itineraryItems.map((i) => i.entityId);
-  if (entityIds.length === 0) return { avgLevel: 'LOW', highCount: 0, localCount: 0 };
+  if (entityIds.length === 0) {
+    return {
+      avgLevel: 'LOW',
+      highCount: 0,
+      localCount: 0,
+      travelDistanceKm: 0,
+      environmentalSensitivityFlags: 0,
+      culturalSensitivityFlags: 0,
+      environmentalImpact: 'Low' as ImpactLevel,
+      culturalSensitivity: 'Low' as ImpactLevel,
+      impactScore: 100,
+    };
+  }
 
   const attractions = await prisma.attraction.findMany({
     where: { id: { in: entityIds } },
     include: {
       crowdRecords: { orderBy: { timestamp: 'desc' }, take: 1 },
+      sensitivityFlags: true,
     },
   });
+  const attractionById = new Map(attractions.map((attraction) => [attraction.id, attraction]));
 
   const crowdRank: Record<string, number> = { LOW: 0, MODERATE: 1, HIGH: 2, SEVERE: 3 };
   const reverseCrowdRank = ['LOW', 'MODERATE', 'HIGH', 'SEVERE'];
   let totalRank = 0;
   let highCount = 0;
+  let environmentalSensitivityFlags = 0;
+  let culturalSensitivityFlags = 0;
 
   for (const attraction of attractions) {
     const level = attraction.crowdRecords[0]?.currentCrowdLevel ?? 'LOW';
     totalRank += crowdRank[level] ?? 0;
     if (level === 'HIGH' || level === 'SEVERE') highCount++;
+
+    for (const flag of attraction.sensitivityFlags) {
+      const active = (!flag.activeFrom || flag.activeFrom <= tripStart) &&
+        (!flag.activeTo || flag.activeTo >= tripStart);
+      if (!active) continue;
+      if (flag.sensitivityType === 'ENVIRONMENTAL') environmentalSensitivityFlags++;
+      if (flag.sensitivityType === 'CULTURAL' || flag.sensitivityType === 'COMMUNITY_RESTRICTION') culturalSensitivityFlags++;
+    }
   }
 
   const avgRank = attractions.length > 0 ? Math.round(totalRank / attractions.length) : 0;
@@ -91,22 +204,28 @@ async function countCrowdMetrics(plan: PlanResult) {
     select: { latitude: true, longitude: true },
   });
 
-  // Simple proximity check: local business within ~500m of any itinerary stop
-  let localCount = 0;
-  for (const attraction of attractions) {
-    for (const biz of localBusinesses) {
-      const dist = Math.sqrt(
-        Math.pow(attraction.latitude - biz.latitude, 2) +
-        Math.pow(attraction.longitude - biz.longitude, 2)
-      );
-      if (dist < 0.005) { // ~500m in degrees
-        localCount++;
-        break;
-      }
-    }
-  }
+  const localCount = attractions.filter((attraction) =>
+    localBusinessProximityScore(attraction, localBusinesses) > 0
+  ).length;
+  const travelDistanceKm = planTravelDistanceKm(plan, attractionById);
+  const summary = tourismImpactSummary({
+    itemCount: plan.itineraryItems.length,
+    highCrowdStops: highCount,
+    localBusinessStops: localCount,
+    travelDistanceKm,
+    environmentalSensitivityFlags,
+    culturalSensitivityFlags,
+  });
 
-  return { avgLevel, highCount, localCount };
+  return {
+    avgLevel,
+    highCount,
+    localCount,
+    travelDistanceKm,
+    environmentalSensitivityFlags,
+    culturalSensitivityFlags,
+    ...summary,
+  };
 }
 
 // ─── POST /api/v1/scoring/tourism-impact ────────────────────────────────────
@@ -130,29 +249,47 @@ router.post('/tourism-impact', async (req, res, next) => {
     });
 
     // 3. Compute metrics from REAL data
-    const popularMetrics = await countCrowdMetrics(popularPlan);
-    const responsibleMetrics = await countCrowdMetrics(responsiblePlan);
+    const tripStart = new Date(input.startDate);
+    const popularMetrics = await countImpactMetrics(popularPlan, tripStart);
+    const responsibleMetrics = await countImpactMetrics(responsiblePlan, tripStart);
 
     const metrics: ImpactMetrics = {
       popularRoute: {
         itemCount: popularPlan.itineraryItems.length,
         avgCrowdLevel: popularMetrics.avgLevel,
         highCrowdStops: popularMetrics.highCount,
+        localBusinessStops: popularMetrics.localCount,
+        travelDistanceKm: popularMetrics.travelDistanceKm,
+        environmentalSensitivityFlags: popularMetrics.environmentalSensitivityFlags,
+        culturalSensitivityFlags: popularMetrics.culturalSensitivityFlags,
+        environmentalImpact: popularMetrics.environmentalImpact,
+        culturalSensitivity: popularMetrics.culturalSensitivity,
+        impactScore: popularMetrics.impactScore,
       },
       responsibleRoute: {
         itemCount: responsiblePlan.itineraryItems.length,
         avgCrowdLevel: responsibleMetrics.avgLevel,
         highCrowdStops: responsibleMetrics.highCount,
         localBusinessStops: responsibleMetrics.localCount,
+        travelDistanceKm: responsibleMetrics.travelDistanceKm,
+        environmentalSensitivityFlags: responsibleMetrics.environmentalSensitivityFlags,
+        culturalSensitivityFlags: responsibleMetrics.culturalSensitivityFlags,
+        environmentalImpact: responsibleMetrics.environmentalImpact,
+        culturalSensitivity: responsibleMetrics.culturalSensitivity,
+        impactScore: responsibleMetrics.impactScore,
       },
       comparison: {
         crowdPressureDelta: popularMetrics.highCount > responsibleMetrics.highCount
           ? `${popularMetrics.highCount - responsibleMetrics.highCount} fewer high-crowd stops`
           : 'No crowd pressure difference',
         localBusinessDelta: responsibleMetrics.localCount - popularMetrics.localCount,
-        message: responsibleMetrics.localCount > popularMetrics.localCount
-          ? `The responsible route supports ${responsibleMetrics.localCount} local businesses`
-          : 'Both routes have similar local business exposure',
+        travelDistanceDeltaKm: rounded(popularMetrics.travelDistanceKm - responsibleMetrics.travelDistanceKm),
+        environmentalSensitivityDelta: popularMetrics.environmentalSensitivityFlags - responsibleMetrics.environmentalSensitivityFlags,
+        culturalSensitivityDelta: popularMetrics.culturalSensitivityFlags - responsibleMetrics.culturalSensitivityFlags,
+        impactScoreDelta: responsibleMetrics.impactScore - popularMetrics.impactScore,
+        message: responsibleMetrics.impactScore > popularMetrics.impactScore
+          ? `Responsible route improves impact score by ${responsibleMetrics.impactScore - popularMetrics.impactScore} points`
+          : 'Both routes have similar tourism impact',
       },
     };
 

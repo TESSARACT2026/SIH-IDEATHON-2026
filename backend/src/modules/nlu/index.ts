@@ -1,9 +1,14 @@
 import { Router } from 'express';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { env } from '../../shared/config/index.js';
+import { prisma } from '../../shared/db/index.js';
 import { AppError } from '../../shared/middleware/errorHandler.js';
+import { optionalAuth } from '../../shared/middleware/auth.js';
 import { validateLLMNarration } from '../trust-validation/index.js';
 import { sanitizeBody } from '../../shared/middleware/sanitize.js';
+import { resolveDestinationId } from '../../shared/utils/idAliases.js';
+import { emergencyContactBundle } from '../emergency/index.js';
 
 const router = Router();
 const GEMINI_TTS_MODEL = 'gemini-3.1-flash-tts-preview';
@@ -142,6 +147,217 @@ function keywordExtract(prompt: string) {
       p.includes('museum') || p.includes('culture') ? 'Museums & Culture' : null,
     ].filter(Boolean) as string[],
   };
+}
+
+export type VoiceIntent =
+  | 'NEARBY_RECOMMENDATIONS'
+  | 'READ_ITINERARY'
+  | 'EMERGENCY_HELP'
+  | 'DOWNLOAD_OFFLINE_PACK'
+  | 'WHAT_IF_REPLAN'
+  | 'UNKNOWN';
+
+type VoiceAttraction = {
+  id: string;
+  destinationId: string;
+  name: string;
+  categories: string[];
+  latitude: number;
+  longitude: number;
+  address: string | null;
+  description: string | null;
+  indoorOutdoor: string;
+  accessibilityWheelchair: boolean;
+  accessibilityVisual: boolean;
+  accessibilityHearing: boolean;
+  destination?: { id: string; name: string; region: string | null; country: string };
+};
+
+const voiceDestinationSelect = {
+  id: true,
+  name: true,
+  region: true,
+  country: true,
+  latitude: true,
+  longitude: true,
+  timezone: true,
+} as const;
+
+const voiceContextPreferencesSchema = z.object({
+  pace: z.enum(['RELAXED', 'MODERATE', 'PACKED']).optional(),
+  accessibilityWheelchair: z.boolean().optional(),
+  accessibilityVision: z.boolean().optional(),
+  accessibilityHearing: z.boolean().optional(),
+  accessibilityCognitive: z.boolean().optional(),
+  interests: z.array(z.string().max(50)).max(20).optional(),
+  transportPreference: z.enum(['WALKING', 'PUBLIC_TRANSIT', 'CAB', 'OWN_VEHICLE', 'MIXED']).optional(),
+  walkingToleranceMinutes: z.number().int().min(5).max(240).optional(),
+}).strict();
+
+const voiceCommandSchema = z.object({
+  utterance: z.string().min(2).max(1000),
+  locale: z.string().regex(/^[a-z]{2,3}(-[A-Z]{2})?$/).default('en-IN'),
+  context: z.object({
+    tripId: z.string().uuid().optional(),
+    destinationId: z.string().min(1).max(100).optional(),
+    lat: z.number().min(-90).max(90).optional(),
+    lon: z.number().min(-180).max(180).optional(),
+    radiusKm: z.number().min(0.1).max(50).default(10),
+    now: z.string().datetime().optional(),
+    remainingMinutes: z.number().int().min(15).max(1440).optional(),
+    preferences: voiceContextPreferencesSchema.optional(),
+  }).strict().refine((context) => (context.lat === undefined) === (context.lon === undefined), {
+    message: 'Provide both lat and lon',
+    path: ['lat'],
+  }).default({}),
+}).strict();
+
+function objectValue(value: Prisma.JsonValue | unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function arrayValue(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item)) : [];
+}
+
+function textValue(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function numberValue(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function includesAny(text: string, terms: string[]) {
+  return terms.some((term) => text.includes(term));
+}
+
+export function detectVoiceIntent(utterance: string): VoiceIntent {
+  const text = utterance.toLowerCase();
+
+  if (includesAny(text, ['emergency', 'sos', 'ambulance', 'police', 'help me', 'madad', 'bachao'])) {
+    return 'EMERGENCY_HELP';
+  }
+  if (includesAny(text, ['offline', 'download trip', 'download my trip', 'survival pack', 'save trip'])) {
+    return 'DOWNLOAD_OFFLINE_PACK';
+  }
+  if (includesAny(text, ['what if', 'replan', 'rain', 'barish', 'crowd', 'crowded', 'budget', 'less time', 'kam time'])) {
+    return 'WHAT_IF_REPLAN';
+  }
+  if (includesAny(text, ['itinerary', 'schedule', 'read my plan', 'read the plan', 'plan sunao', 'aaj ka plan'])) {
+    return 'READ_ITINERARY';
+  }
+  if (includesAny(text, ['nearby', 'near me', 'around me', 'peaceful', 'quiet', 'calm', 'shaant', 'shanti', 'jagah'])) {
+    return 'NEARBY_RECOMMENDATIONS';
+  }
+
+  return 'UNKNOWN';
+}
+
+function distanceKm(from: { latitude: number; longitude: number }, to: { latitude: number; longitude: number }) {
+  const toRadians = (value: number) => value * Math.PI / 180;
+  const lat1 = toRadians(from.latitude);
+  const lat2 = toRadians(to.latitude);
+  const deltaLat = toRadians(to.latitude - from.latitude);
+  const deltaLon = toRadians(to.longitude - from.longitude);
+  const a = Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function peacefulBoost(utterance: string, attraction: VoiceAttraction) {
+  const text = utterance.toLowerCase();
+  if (!includesAny(text, ['peaceful', 'quiet', 'calm', 'shaant', 'shanti'])) return 0;
+
+  const haystack = [
+    attraction.name,
+    attraction.description ?? '',
+    attraction.indoorOutdoor,
+    ...attraction.categories,
+  ].join(' ').toLowerCase();
+
+  if (includesAny(haystack, ['park', 'garden', 'nature', 'temple', 'spiritual', 'museum', 'heritage'])) return 2;
+  if (includesAny(haystack, ['market', 'shopping', 'festival'])) return -1;
+  return 0;
+}
+
+export function rankVoiceNearbyAttractions(input: {
+  utterance: string;
+  origin: { latitude: number; longitude: number };
+  attractions: VoiceAttraction[];
+  preferences?: z.infer<typeof voiceContextPreferencesSchema>;
+  radiusKm?: number;
+  limit?: number;
+}) {
+  const radiusKm = input.radiusKm ?? 10;
+  const limit = input.limit ?? 3;
+  const interests = (input.preferences?.interests ?? []).map((interest) => interest.toLowerCase());
+
+  return input.attractions
+    .map((attraction) => {
+      const dist = distanceKm(input.origin, attraction);
+      const haystack = [attraction.name, attraction.description ?? '', ...attraction.categories].join(' ').toLowerCase();
+      const interestBoost = interests.some((interest) => haystack.includes(interest)) ? 1.5 : 0;
+      const accessibilityPenalty = input.preferences?.accessibilityWheelchair && !attraction.accessibilityWheelchair ? 100 : 0;
+      const rank = dist - peacefulBoost(input.utterance, attraction) - interestBoost + accessibilityPenalty;
+
+      return {
+        id: attraction.id,
+        destinationId: attraction.destinationId,
+        name: attraction.name,
+        categories: attraction.categories,
+        address: attraction.address,
+        latitude: attraction.latitude,
+        longitude: attraction.longitude,
+        indoorOutdoor: attraction.indoorOutdoor,
+        accessibilityWheelchair: attraction.accessibilityWheelchair,
+        destination: attraction.destination,
+        distanceKm: Math.round(dist * 100) / 100,
+        rank,
+      };
+    })
+    .filter((attraction) => attraction.distanceKm <= radiusKm && attraction.rank < 100)
+    .sort((a, b) => a.rank - b.rank || a.distanceKm - b.distanceKm)
+    .slice(0, limit)
+    .map(({ rank: _rank, ...attraction }) => attraction);
+}
+
+function snapshotItems(snapshot: Prisma.JsonValue | null | undefined) {
+  const plan = objectValue(snapshot);
+  return arrayValue(plan?.itineraryItems ?? plan?.items);
+}
+
+function itineraryLinesForVoice(trip: {
+  itinerarySnapshot: Prisma.JsonValue | null;
+  itineraries: Array<{
+    items: Array<{
+      dayNumber: number;
+      sequence: number;
+      startTime: string;
+      endTime: string;
+      entityId: string;
+      attraction: { name: string } | null;
+    }>;
+  }>;
+}) {
+  const snapshotLines = snapshotItems(trip.itinerarySnapshot).map((item) => {
+    const day = numberValue(item.dayNumber ?? item.day);
+    const name = textValue(item.attractionName) ?? textValue(item.name) ?? textValue(item.entityId) ?? 'Stop';
+    const time = [textValue(item.startTime), textValue(item.endTime)].filter(Boolean).join(' to ');
+    return `Day ${day ?? '?'}: ${time ? `${time}, ` : ''}${name}`;
+  });
+  if (snapshotLines.length > 0) return snapshotLines;
+
+  return (trip.itineraries[0]?.items ?? []).map((item) => (
+    `Day ${item.dayNumber}: ${item.startTime} to ${item.endTime}, ${item.attraction?.name ?? item.entityId}`
+  ));
+}
+
+function timePhrase(minutes?: number, locale = 'en-IN') {
+  if (!minutes) return locale.startsWith('hi') ? 'Aapke context ke hisaab se' : 'Based on your context';
+  if (minutes < 60) return locale.startsWith('hi') ? `Aapke paas lagbhag ${minutes} minutes hain` : `You have about ${minutes} minutes`;
+  const hours = Math.round((minutes / 60) * 10) / 10;
+  return locale.startsWith('hi') ? `Aapke paas lagbhag ${hours} hours hain` : `You have about ${hours} hours`;
 }
 
 // ─── Schema Validation ───────────────────────────────────────────────────────
@@ -296,6 +512,243 @@ router.post('/speech', sanitizeBody, async (req, res, next) => {
       return;
     }
     next(new AppError('Audio generation is temporarily unavailable', 503, 'AUDIO_UNAVAILABLE'));
+  }
+});
+
+router.post('/voice-command', optionalAuth, sanitizeBody, async (req, res, next) => {
+  try {
+    const { utterance, locale, context } = voiceCommandSchema.parse(req.body);
+    const intent = detectVoiceIntent(utterance);
+
+    if (context.tripId && !req.user) {
+      throw new AppError('Authentication required for trip voice commands', 401, 'UNAUTHORIZED');
+    }
+
+    const trip = context.tripId
+      ? await prisma.trip.findUnique({
+          where: { id: context.tripId },
+          include: {
+            destination: { select: voiceDestinationSelect },
+            user: { select: { preferredLanguage: true, emergencyContactName: true, emergencyContactPhone: true } },
+            itineraries: {
+              orderBy: { generatedAt: 'desc' },
+              take: 1,
+              include: {
+                items: {
+                  orderBy: [{ dayNumber: 'asc' }, { sequence: 'asc' }],
+                  include: { attraction: { select: { name: true } } },
+                },
+              },
+            },
+          },
+        })
+      : null;
+
+    if (trip && trip.userId !== req.user!.userId) {
+      throw new AppError('Trip not found', 404, 'NOT_FOUND');
+    }
+    if (context.tripId && !trip) {
+      throw new AppError('Trip not found', 404, 'NOT_FOUND');
+    }
+
+    const destinationId = context.destinationId ? resolveDestinationId(context.destinationId) : trip?.destinationId;
+    const destination = trip?.destination ?? (
+      destinationId
+        ? await prisma.destination.findUnique({ where: { id: destinationId }, select: voiceDestinationSelect })
+        : null
+    );
+    if (destinationId && !destination) {
+      throw new AppError('Destination not found', 404, 'DESTINATION_NOT_FOUND');
+    }
+
+    const user = trip?.user ?? (
+      req.user
+        ? await prisma.user.findUnique({
+            where: { id: req.user.userId },
+            select: { preferredLanguage: true, emergencyContactName: true, emergencyContactPhone: true },
+          })
+        : null
+    );
+    const effectiveLocale = user?.preferredLanguage ?? locale;
+    const baseContext = {
+      intent,
+      locale: effectiveLocale,
+      tripId: trip?.id ?? context.tripId ?? null,
+      destinationId: destination?.id ?? destinationId ?? null,
+      hasLocation: context.lat !== undefined && context.lon !== undefined,
+      remainingMinutes: context.remainingMinutes ?? null,
+    };
+
+    if (intent === 'NEARBY_RECOMMENDATIONS') {
+      const origin = context.lat !== undefined && context.lon !== undefined
+        ? { latitude: context.lat, longitude: context.lon }
+        : destination ? { latitude: destination.latitude, longitude: destination.longitude } : null;
+
+      if (!origin) {
+        return res.json({
+          data: {
+            intent,
+            spokenText: 'I need your current location or a trip destination to find nearby options.',
+            needs: ['context.lat', 'context.lon', 'context.destinationId or context.tripId'],
+            contextUsed: baseContext,
+          },
+        });
+      }
+
+      const attractions = await prisma.attraction.findMany({
+        where: destination ? { destinationId: destination.id } : {},
+        select: {
+          id: true,
+          destinationId: true,
+          name: true,
+          categories: true,
+          latitude: true,
+          longitude: true,
+          address: true,
+          description: true,
+          indoorOutdoor: true,
+          accessibilityWheelchair: true,
+          accessibilityVisual: true,
+          accessibilityHearing: true,
+          destination: { select: { id: true, name: true, region: true, country: true } },
+        },
+        take: 100,
+      });
+      const options = rankVoiceNearbyAttractions({
+        utterance,
+        origin,
+        attractions,
+        preferences: context.preferences,
+        radiusKm: context.radiusKm,
+      });
+      const names = options.map((option) => option.name).join(', ');
+
+      return res.json({
+        data: {
+          intent,
+          spokenText: options.length
+            ? `${timePhrase(context.remainingMinutes, effectiveLocale)}. I found ${options.length} nearby option${options.length === 1 ? '' : 's'}: ${names}.`
+            : 'I could not find a matching nearby option in this radius.',
+          results: options,
+          action: {
+            type: 'SHOW_NEARBY_OPTIONS',
+            method: 'GET',
+            path: '/api/v1/nearby',
+          },
+          contextUsed: baseContext,
+        },
+      });
+    }
+
+    if (intent === 'READ_ITINERARY') {
+      if (!trip) {
+        return res.json({
+          data: {
+            intent,
+            spokenText: 'I need a saved trip before I can read the itinerary.',
+            needs: ['context.tripId'],
+            contextUsed: baseContext,
+          },
+        });
+      }
+
+      const lines = itineraryLinesForVoice(trip).slice(0, 8);
+      return res.json({
+        data: {
+          intent,
+          spokenText: lines.length
+            ? `Here is your itinerary. ${lines.join('. ')}.`
+            : 'This trip does not have a saved itinerary yet.',
+          itinerarySummary: lines,
+          action: { type: 'READ_ITINERARY' },
+          contextUsed: baseContext,
+        },
+      });
+    }
+
+    if (intent === 'EMERGENCY_HELP') {
+      const emergency = emergencyContactBundle(destination);
+      const savedContacts = user?.emergencyContactPhone
+        ? [{ label: user.emergencyContactName ?? 'Emergency contact', phone: user.emergencyContactPhone }]
+        : [];
+      const primary = emergency.contacts.slice(0, 4);
+
+      return res.json({
+        data: {
+          intent,
+          spokenText: `For urgent help, call 112. Tourist helpline is 1363.${savedContacts[0] ? ` Your saved emergency contact is ${savedContacts[0].label} at ${savedContacts[0].phone}.` : ''}`,
+          emergencyContacts: primary,
+          savedContacts,
+          action: {
+            type: 'SHOW_EMERGENCY_CONTACTS',
+            method: 'GET',
+            path: `/api/v1/emergency${destination ? `?destinationId=${destination.id}` : ''}`,
+          },
+          contextUsed: baseContext,
+        },
+      });
+    }
+
+    if (intent === 'DOWNLOAD_OFFLINE_PACK') {
+      if (!trip) {
+        return res.json({
+          data: {
+            intent,
+            spokenText: 'I need a saved trip before I can prepare the offline pack.',
+            needs: ['context.tripId'],
+            contextUsed: baseContext,
+          },
+        });
+      }
+
+      return res.json({
+        data: {
+          intent,
+          spokenText: 'Your offline survival pack is ready to download.',
+          action: {
+            type: 'DOWNLOAD_OFFLINE_PACK',
+            method: 'GET',
+            path: `/api/v1/trips/${trip.id}/offline-pack`,
+          },
+          contextUsed: baseContext,
+        },
+      });
+    }
+
+    if (intent === 'WHAT_IF_REPLAN') {
+      return res.json({
+        data: {
+          intent,
+          spokenText: trip
+            ? 'I can turn that into a what-if replan for this trip.'
+            : 'I can extract the what-if change, but I need a saved trip before replanning.',
+          action: {
+            type: 'WHAT_IF_REPLAN',
+            preflight: { method: 'POST', path: '/api/v1/nlu/extract-delta', payload: { query: utterance } },
+            ...(trip ? { method: 'POST', path: `/api/v1/trips/${trip.id}/itinerary/replan` } : { needs: ['context.tripId'] }),
+          },
+          contextUsed: baseContext,
+        },
+      });
+    }
+
+    return res.json({
+      data: {
+        intent,
+        spokenText: 'I can help with nearby places, reading your itinerary, emergency contacts, offline packs, or what-if replans.',
+        needs: ['supported voice command'],
+        contextUsed: baseContext,
+      },
+    });
+  } catch (err) {
+    if (err instanceof AppError) return next(err);
+    if (err instanceof z.ZodError) {
+      res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid voice command request', details: err.flatten().fieldErrors },
+      });
+      return;
+    }
+    next(new AppError('Failed to resolve voice command', 500, 'VOICE_COMMAND_ERROR'));
   }
 });
 

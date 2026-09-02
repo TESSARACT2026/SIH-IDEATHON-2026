@@ -7,6 +7,7 @@ import { requireAuth } from '../../shared/middleware/auth.js';
 import { AppError } from '../../shared/middleware/errorHandler.js';
 import { globalLimiter } from '../../shared/middleware/rateLimiter.js';
 import { resolveDestinationId } from '../../shared/utils/idAliases.js';
+import { emergencyContactBundle } from '../emergency/index.js';
 
 const router = Router();
 
@@ -30,6 +31,7 @@ const updateTripSchema = z.object({
 
 const saveSnapshotSchema = z.object({
   itinerarySnapshot: z.record(z.unknown()),
+  plannerInput: z.record(z.unknown()).optional(),
 }).strict();
 
 const uuidParamSchema = z.object({
@@ -143,8 +145,16 @@ function arrayValue(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item)) : [];
 }
 
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
 function textValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function numberValue(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function exportFileName(title: string): string {
@@ -152,9 +162,17 @@ function exportFileName(title: string): string {
   return `${slug || 'trip'}-itinerary.pdf`;
 }
 
-function itineraryLinesFromSnapshot(snapshot: Prisma.JsonValue | null | undefined): string[] {
+function offlinePackFileName(title: string): string {
+  return exportFileName(title).replace('-itinerary.pdf', '-offline-pack.json');
+}
+
+function snapshotItems(snapshot: Prisma.JsonValue | null | undefined): Record<string, unknown>[] {
   const plan = objectValue(snapshot);
-  const items = arrayValue(plan?.itineraryItems ?? plan?.items);
+  return arrayValue(plan?.itineraryItems ?? plan?.items);
+}
+
+function itineraryLinesFromSnapshot(snapshot: Prisma.JsonValue | null | undefined): string[] {
+  const items = snapshotItems(snapshot);
   if (items.length === 0) return ['No itinerary items saved yet.'];
 
   return items.flatMap((item) => {
@@ -206,7 +224,7 @@ function buildTripPdf(trip: {
   const destination = [trip.destination.name, trip.destination.region, trip.destination.country].filter(Boolean).join(', ');
   
   const plan = objectValue(trip.itinerarySnapshot);
-  const warnings = arrayValue(plan?.warnings).map(w => typeof w === 'string' ? w : null).filter(Boolean);
+  const warnings = stringArrayValue(plan?.warnings);
   
   const lines = [
     trip.title,
@@ -244,6 +262,183 @@ function sendTripPdf(res: import('express').Response, trip: {
   res.setHeader('Content-Disposition', `attachment; filename="${exportFileName(trip.title)}"`);
   res.setHeader('Content-Length', pdf.length.toString());
   res.send(pdf);
+}
+
+type OfflinePackTrip = {
+  id: string;
+  title: string;
+  destinationId: string;
+  startDate: Date;
+  endDate: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  itinerarySnapshot: Prisma.JsonValue | null;
+  destination: {
+    id: string;
+    name: string;
+    region: string | null;
+    country: string;
+    latitude: number;
+    longitude: number;
+    timezone: string;
+  };
+  user: {
+    preferredLanguage: string;
+    emergencyContactName: string | null;
+    emergencyContactPhone: string | null;
+  };
+  itineraries: {
+    generatedAt: Date;
+    items: {
+      dayNumber: number;
+      sequence: number;
+      startTime: string;
+      endTime: string;
+      entityId: string;
+      travelBufferMinutesBefore: number;
+      attraction: {
+        id: string;
+        name: string;
+        categories: string[];
+        latitude: number;
+        longitude: number;
+        address: string | null;
+        accessibilityWheelchair: boolean;
+        accessibilityVisual: boolean;
+        accessibilityHearing: boolean;
+        accessibilityNotes: string | null;
+      } | null;
+    }[];
+  }[];
+};
+
+function factsForSnapshotItem(item: Record<string, unknown>) {
+  const trust = objectValue(item.trustSummary as Prisma.JsonValue);
+  return arrayValue(trust?.facts).map((fact) => ({
+    id: textValue(fact.fact_id ?? fact.id),
+    factKey: textValue(fact.fact_key ?? fact.factKey) ?? 'unknown',
+    factValue: fact.fact_value ?? fact.factValue ?? null,
+    sourceName: textValue(fact.source_name ?? fact.sourceName),
+    sourceType: textValue(fact.source_type ?? fact.sourceType),
+    verificationStatus: textValue(fact.verification_status ?? fact.verificationStatus),
+    confidence: numberValue(fact.confidence),
+    lastChecked: textValue(fact.last_checked ?? fact.lastChecked ?? fact.timestamp),
+  }));
+}
+
+export function importantFactsFromSnapshot(snapshot: Prisma.JsonValue | null | undefined) {
+  const facts = new Map<string, ReturnType<typeof factsForSnapshotItem>[number] & { stopName: string }>();
+
+  for (const item of snapshotItems(snapshot)) {
+    const stopName = textValue(item.attractionName) ?? textValue(item.name) ?? textValue(item.entityId) ?? 'Stop';
+    for (const fact of factsForSnapshotItem(item)) {
+      const key = fact.id ?? `${stopName}:${fact.factKey}:${JSON.stringify(fact.factValue)}`;
+      if (!facts.has(key)) facts.set(key, { ...fact, stopName });
+    }
+  }
+
+  return Array.from(facts.values());
+}
+
+export function buildOfflinePack(trip: OfflinePackTrip) {
+  const snapshot = objectValue(trip.itinerarySnapshot);
+  const persistedItems = new Map((trip.itineraries[0]?.items ?? []).map((item) => [item.entityId, item]));
+  const itinerary = snapshotItems(trip.itinerarySnapshot).map((item, index) => {
+    const entityId = textValue(item.entityId);
+    const persisted = entityId ? persistedItems.get(entityId) : undefined;
+    const attraction = persisted?.attraction;
+
+    return {
+      dayNumber: numberValue(item.dayNumber ?? item.day) ?? persisted?.dayNumber ?? null,
+      sequence: numberValue(item.sequence) ?? persisted?.sequence ?? index + 1,
+      startTime: textValue(item.startTime) ?? persisted?.startTime ?? null,
+      endTime: textValue(item.endTime) ?? persisted?.endTime ?? null,
+      travelBufferMinutesBefore: numberValue(item.travelBufferMinutesBefore) ?? persisted?.travelBufferMinutesBefore ?? 0,
+      attraction: {
+        id: entityId ?? persisted?.entityId ?? null,
+        name: textValue(item.attractionName) ?? textValue(item.name) ?? attraction?.name ?? 'Stop',
+        address: attraction?.address ?? null,
+        categories: attraction?.categories ?? [],
+        latitude: attraction?.latitude ?? null,
+        longitude: attraction?.longitude ?? null,
+        accessibility: {
+          wheelchair: attraction?.accessibilityWheelchair ?? false,
+          visual: attraction?.accessibilityVisual ?? false,
+          hearing: attraction?.accessibilityHearing ?? false,
+          notes: attraction?.accessibilityNotes ?? null,
+        },
+      },
+      facts: factsForSnapshotItem(item),
+      note: textValue(item.explanationText) ?? textValue(item.description),
+    };
+  });
+  const importantFacts = importantFactsFromSnapshot(trip.itinerarySnapshot);
+  const emergency = emergencyContactBundle(trip.destination);
+  const savedContacts = trip.user.emergencyContactPhone
+    ? [{
+        category: 'personal',
+        label: trip.user.emergencyContactName ?? 'Emergency contact',
+        phone: trip.user.emergencyContactPhone,
+      }]
+    : [];
+  const warnings = stringArrayValue(snapshot?.warnings);
+  const alternatives = arrayValue(snapshot?.excluded).map((item) => ({
+    entityId: textValue(item.entityId),
+    attractionName: textValue(item.attractionName) ?? textValue(item.name) ?? 'Alternative',
+    reason: textValue(item.reason) ?? 'Excluded by trip constraints',
+    verificationStatus: textValue(item.verificationStatus),
+  }));
+
+  return {
+    formatVersion: '1.0',
+    generatedAt: new Date().toISOString(),
+    trip: {
+      id: trip.id,
+      title: trip.title,
+      startDate: trip.startDate.toISOString(),
+      endDate: trip.endDate.toISOString(),
+      snapshotUpdatedAt: trip.updatedAt.toISOString(),
+    },
+    destination: trip.destination,
+    itinerary,
+    mapHints: {
+      destinationCenter: {
+        latitude: trip.destination.latitude,
+        longitude: trip.destination.longitude,
+      },
+      stops: itinerary.map((item) => ({
+        name: item.attraction.name,
+        latitude: item.attraction.latitude,
+        longitude: item.attraction.longitude,
+      })),
+      routeSegments: itinerary.slice(1).map((item, index) => ({
+        from: itinerary[index].attraction.name,
+        to: item.attraction.name,
+        estimatedMinutes: item.travelBufferMinutesBefore,
+      })),
+    },
+    importantFacts,
+    emergency: {
+      contacts: emergency.contacts,
+      lastVerified: emergency.lastVerified,
+    },
+    savedContacts,
+    languagePack: {
+      locale: trip.user.preferredLanguage,
+      phrases: [
+        { key: 'need_help', en: 'I need help.', hi: 'Mujhe madad chahiye.', or: 'Mote sahajya darkar.' },
+        { key: 'call_emergency', en: 'Please call emergency services.', hi: 'Kripya emergency service ko call kijiye.', or: 'Emergency seva ku call karantu.' },
+        { key: 'lost', en: 'I am lost.', hi: 'Main raasta bhatak gaya/gayi hoon.', or: 'Mu raasta bhuli jaichi.' },
+      ],
+    },
+    warnings,
+    alternatives,
+    verification: {
+      factCount: importantFacts.length,
+      lastVerifiedTimestamps: Array.from(new Set(importantFacts.map((fact) => fact.lastChecked).filter(Boolean))),
+      emergencyLastVerified: emergency.lastVerified,
+    },
+  };
 }
 
 // ─── Public Share Route (Feature 2) ─────────────────────────────────────────
@@ -314,6 +509,62 @@ router.get('/:id/export', requireAuth, async (req, res, next) => {
     if (!trip || trip.userId !== userId) throw new AppError('Trip not found', 404, 'NOT_FOUND');
 
     sendTripPdf(res, trip);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid trip ID', details: err.flatten().fieldErrors } });
+      return;
+    }
+    next(err);
+  }
+});
+
+router.get('/:id/offline-pack', requireAuth, async (req, res, next) => {
+  try {
+    const { id } = uuidParamSchema.parse(req.params);
+    const userId = req.user!.userId;
+    const trip = await prisma.trip.findUnique({
+      where: { id },
+      include: {
+        destination: {
+          select: { id: true, name: true, region: true, country: true, latitude: true, longitude: true, timezone: true },
+        },
+        user: {
+          select: { preferredLanguage: true, emergencyContactName: true, emergencyContactPhone: true },
+        },
+        itineraries: {
+          orderBy: { generatedAt: 'desc' },
+          take: 1,
+          include: {
+            items: {
+              orderBy: [{ dayNumber: 'asc' }, { sequence: 'asc' }],
+              include: {
+                attraction: {
+                  select: {
+                    id: true,
+                    name: true,
+                    categories: true,
+                    latitude: true,
+                    longitude: true,
+                    address: true,
+                    accessibilityWheelchair: true,
+                    accessibilityVisual: true,
+                    accessibilityHearing: true,
+                    accessibilityNotes: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!trip || trip.userId !== userId) throw new AppError('Trip not found', 404, 'NOT_FOUND');
+    if (!trip.itinerarySnapshot) throw new AppError('Trip has no saved itinerary snapshot for offline pack', 409, 'ITINERARY_NOT_READY');
+
+    res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
+    res.setHeader('Content-Disposition', `attachment; filename="${offlinePackFileName(trip.title)}"`);
+    res.json({ data: buildOfflinePack(trip) });
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid trip ID', details: err.flatten().fieldErrors } });
@@ -517,16 +768,23 @@ router.patch('/:id', requireAuth, async (req, res, next) => {
 router.post('/:id/snapshot', requireAuth, async (req, res, next) => {
   try {
     const { id } = uuidParamSchema.parse(req.params);
-    const { itinerarySnapshot } = saveSnapshotSchema.parse(req.body);
+    const { itinerarySnapshot, plannerInput } = saveSnapshotSchema.parse(req.body);
     const userId = req.user!.userId;
 
     const existing = await prisma.trip.findUnique({ where: { id } });
     if (!existing || existing.userId !== userId) throw new AppError('Trip not found', 404, 'NOT_FOUND');
 
+    const snapshotPlannerInput = objectValue(itinerarySnapshot as Prisma.JsonValue)?.plannerInput;
+    const data: Prisma.TripUpdateInput = {
+      itinerarySnapshot: itinerarySnapshot as Prisma.InputJsonValue,
+    };
+    if (plannerInput || snapshotPlannerInput) {
+      data.plannerInput = (plannerInput ?? snapshotPlannerInput) as Prisma.InputJsonValue;
+    }
+
     const trip = await prisma.trip.update({
       where: { id },
-      // Prisma Json fields require explicit cast via Prisma.InputJsonValue
-      data: { itinerarySnapshot: itinerarySnapshot as import('@prisma/client').Prisma.InputJsonValue },
+      data,
     });
 
     res.json({

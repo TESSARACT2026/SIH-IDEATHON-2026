@@ -24,6 +24,8 @@ export const openApiDocument = {
     { name: 'Emergency' },
     { name: 'Guide' },
     { name: 'Budget' },
+    { name: 'Scoring' },
+    { name: 'Groups' },
     { name: 'Analytics' },
     { name: 'Search' },
     { name: 'Nearby' },
@@ -165,6 +167,57 @@ export const openApiDocument = {
           format: { type: 'string', enum: ['wav', 'pcm'], default: 'wav' },
         },
       },
+      NluVoiceCommandRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['utterance'],
+        properties: {
+          utterance: { type: 'string', minLength: 2, maxLength: 1000 },
+          locale: { type: 'string', pattern: '^[a-z]{2,3}(-[A-Z]{2})?$', default: 'en-IN' },
+          context: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              tripId: { type: 'string', format: 'uuid' },
+              destinationId: { type: 'string', minLength: 1, maxLength: 100 },
+              lat: { type: 'number', minimum: -90, maximum: 90 },
+              lon: { type: 'number', minimum: -180, maximum: 180 },
+              radiusKm: { type: 'number', minimum: 0.1, maximum: 50, default: 10 },
+              now: { type: 'string', format: 'date-time' },
+              remainingMinutes: { type: 'integer', minimum: 15, maximum: 1440 },
+              preferences: { $ref: '#/components/schemas/PlannerRequest/properties/preferences' },
+            },
+          },
+        },
+      },
+      WhatIfDeltaRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['query'],
+        properties: {
+          query: { type: 'string', minLength: 3, maxLength: 500 },
+        },
+      },
+      ReplanRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['delta'],
+        properties: {
+          delta: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['type', 'payload'],
+            properties: {
+              type: { type: 'string', enum: ['weather_change', 'time_reduced', 'crowd_increase', 'budget_change'] },
+              payload: {
+                type: 'object',
+                additionalProperties: true,
+                description: 'weather_change supports affectedDays; budget_change supports maxBudgetPerPerson or decreaseByPerPerson.',
+              },
+            },
+          },
+        },
+      },
       FeedbackRequest: {
         type: 'object',
         additionalProperties: false,
@@ -173,6 +226,7 @@ export const openApiDocument = {
           entityId: { type: 'string', minLength: 1, maxLength: 100, description: 'UUID; attraction feedback also accepts legacy frontend attraction slugs.' },
           entityType: { type: 'string', enum: ['ATTRACTION', 'FACT', 'CROWD_RECORD'] },
           feedbackType: { type: 'string', enum: ['INACCURATE', 'OUTDATED', 'OTHER'] },
+          reportType: { type: 'string', enum: ['CLOSED', 'PRICE_CHANGED', 'ACCESSIBILITY_INCORRECT', 'HOURS_INCORRECT', 'ROAD_BLOCKED', 'OVERCROWDED', 'FACILITY_UNAVAILABLE', 'OTHER'] },
           comment: { type: 'string', maxLength: 500 },
         },
       },
@@ -203,6 +257,57 @@ export const openApiDocument = {
           attractionIds: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 100 }, minItems: 1, maxItems: 50, description: 'UUIDs or legacy frontend slugs.' },
           travellerType: { type: 'string', enum: ['INDIAN', 'FOREIGN', 'CHILD'], default: 'INDIAN' },
           travellers: { type: 'integer', minimum: 1, maximum: 20, default: 1 },
+        },
+      },
+      TripBudgetBreakdownQuery: {
+        type: 'object',
+        properties: {
+          travellerType: { type: 'string', enum: ['INDIAN', 'FOREIGN', 'CHILD'], default: 'INDIAN' },
+          travellers: { type: 'integer', minimum: 1, maximum: 20, default: 1 },
+        },
+      },
+      TourismImpactRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['destinationId', 'startDate', 'days', 'preferences'],
+        properties: {
+          destinationId: { type: 'string', minLength: 1, maxLength: 100 },
+          startDate: { type: 'string', format: 'date-time' },
+          days: { type: 'integer', minimum: 1, maximum: 14 },
+          preferences: { $ref: '#/components/schemas/PlannerRequest/properties/preferences' },
+        },
+      },
+      GroupCreateRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['destinationId', 'startDate', 'days'],
+        properties: {
+          destinationId: { type: 'string', minLength: 1, maxLength: 100, description: 'UUID or legacy frontend slug.' },
+          startDate: { type: 'string', format: 'date-time' },
+          days: { type: 'integer', minimum: 1, maximum: 14 },
+          title: { type: 'string', minLength: 1, maxLength: 200, default: 'Group Trip' },
+        },
+      },
+      GroupJoinRequest: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'preferences'],
+        properties: {
+          name: { type: 'string', minLength: 1, maxLength: 100 },
+          preferences: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              pace: { type: 'string', enum: ['RELAXED', 'MODERATE', 'PACKED'], default: 'MODERATE' },
+              accessibilityWheelchair: { type: 'boolean', default: false },
+              accessibilityVision: { type: 'boolean', default: false },
+              accessibilityHearing: { type: 'boolean', default: false },
+              accessibilityCognitive: { type: 'boolean', default: false },
+              interests: { type: 'array', items: { type: 'string', maxLength: 50 }, maxItems: 20, default: [] },
+              transportPreference: { type: 'string', enum: ['WALKING', 'PUBLIC_TRANSIT', 'CAB', 'OWN_VEHICLE', 'MIXED'], default: 'MIXED' },
+              walkingToleranceMinutes: { type: 'integer', minimum: 5, maximum: 240, default: 30 },
+            },
+          },
         },
       },
       CrowdReportRequest: {
@@ -251,7 +356,10 @@ export const openApiDocument = {
         type: 'object',
         additionalProperties: false,
         required: ['itinerarySnapshot'],
-        properties: { itinerarySnapshot: { type: 'object', additionalProperties: true } },
+        properties: {
+          itinerarySnapshot: { type: 'object', additionalProperties: true },
+          plannerInput: { type: 'object', additionalProperties: true },
+        },
       },
     },
     responses: {
@@ -386,6 +494,25 @@ export const openApiDocument = {
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
       },
     },
+    '/api/v1/attractions/{id}/suitability': {
+      get: {
+        tags: ['Attractions'],
+        summary: 'Explain attraction suitability for a time and constraints',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'UUID or legacy frontend slug.' },
+          { name: 'time', in: 'query', required: true, schema: { type: 'string', pattern: '^\\d{2}:\\d{2}$' } },
+          { name: 'date', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'accessibilityWheelchair', in: 'query', schema: { type: 'boolean', default: false } },
+          { name: 'accessibilityVision', in: 'query', schema: { type: 'boolean', default: false } },
+          { name: 'accessibilityHearing', in: 'query', schema: { type: 'boolean', default: false } },
+          { name: 'accessibilityCognitive', in: 'query', schema: { type: 'boolean', default: false } },
+          { name: 'walkingToleranceMinutes', in: 'query', schema: { type: 'integer', minimum: 5, maximum: 240 } },
+          { name: 'weatherCondition', in: 'query', schema: { type: 'string', enum: ['clear', 'cloudy', 'rain', 'snow', 'thunderstorm', 'extreme_heat', 'unknown'] } },
+          { name: 'maxTempC', in: 'query', schema: { type: 'number', minimum: -30, maximum: 60 } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
     '/api/v1/live/weather': {
       get: {
         tags: ['Live Data'],
@@ -393,6 +520,19 @@ export const openApiDocument = {
         parameters: [
           { name: 'lat', in: 'query', required: true, schema: { type: 'number', minimum: -90, maximum: 90 } },
           { name: 'lon', in: 'query', required: true, schema: { type: 'number', minimum: -180, maximum: 180 } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
+      },
+    },
+    '/api/v1/live/forecast': {
+      get: {
+        tags: ['Live Data'],
+        summary: 'Daily forecast range',
+        parameters: [
+          { name: 'lat', in: 'query', required: true, schema: { type: 'number', minimum: -90, maximum: 90 } },
+          { name: 'lon', in: 'query', required: true, schema: { type: 'number', minimum: -180, maximum: 180 } },
+          { name: 'startDate', in: 'query', required: true, schema: { type: 'string', format: 'date' } },
+          { name: 'endDate', in: 'query', required: true, schema: { type: 'string', format: 'date' } },
         ],
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
       },
@@ -442,6 +582,23 @@ export const openApiDocument = {
         summary: 'Generate spoken narration audio',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NluSpeechRequest' } } } },
         responses: { '200': { $ref: '#/components/responses/Audio' }, '400': { $ref: '#/components/responses/BadRequest' }, '503': { $ref: '#/components/responses/ServiceUnavailable' } },
+      },
+    },
+    '/api/v1/nlu/voice-command': {
+      post: {
+        security: [{}, ...bearerSecurity],
+        tags: ['NLU'],
+        summary: 'Resolve a context-aware travel voice command',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NluVoiceCommandRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/nlu/extract-delta': {
+      post: {
+        tags: ['NLU'],
+        summary: 'Extract a structured what-if replan delta',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/WhatIfDeltaRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
       },
     },
     '/api/v1/feedback': {
@@ -584,6 +741,25 @@ export const openApiDocument = {
         responses: { '200': { $ref: '#/components/responses/Pdf' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } },
       },
     },
+    '/api/v1/trips/{id}/offline-pack': {
+      get: {
+        security: bearerSecurity,
+        tags: ['Trips'],
+        summary: 'Download owned trip offline survival pack',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } },
+      },
+    },
+    '/api/v1/trips/{id}/itinerary/replan': {
+      post: {
+        security: bearerSecurity,
+        tags: ['Trips'],
+        summary: 'Re-run deterministic planner with a what-if delta',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/ReplanRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
     '/api/v1/trips/share/{token}': {
       get: {
         tags: ['Trips'],
@@ -676,6 +852,85 @@ export const openApiDocument = {
         summary: 'Calculate ticket budget for selected attractions',
         security: [],
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/BudgetEstimateRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/budget/trips/{id}/breakdown': {
+      get: {
+        security: bearerSecurity,
+        tags: ['Budget'],
+        summary: 'Calculate transparent budget breakdown for a saved trip',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'travellerType', in: 'query', schema: { type: 'string', enum: ['INDIAN', 'FOREIGN', 'CHILD'], default: 'INDIAN' } },
+          { name: 'travellers', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 20, default: 1 } },
+        ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } },
+      },
+    },
+    '/api/v1/scoring/trip-health/{id}': {
+      get: {
+        security: bearerSecurity,
+        tags: ['Scoring'],
+        summary: 'Calculate trip health/risk score',
+        description: 'Includes weather, crowd, transport/routing, closure, accessibility, emergency-readiness, data-quality sub-scores, and deterministic mitigation actions for risky trips.',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/scoring/tourism-impact': {
+      post: {
+        tags: ['Scoring'],
+        summary: 'Compare popular and responsible route impact metrics',
+        description: 'Returns route-level crowd, local-business, travel-distance, environmental, cultural-sensitivity, and overall impact-score metrics.',
+        security: [],
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/TourismImpactRequest' } } } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/scoring/trip-trust/{id}': {
+      get: {
+        security: bearerSecurity,
+        tags: ['Scoring'],
+        summary: 'Aggregate trip-level trust score',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/groups': {
+      post: {
+        security: bearerSecurity,
+        tags: ['Groups'],
+        summary: 'Create a group planning session',
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/GroupCreateRequest' } } } },
+        responses: { '201': { $ref: '#/components/responses/Created' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/groups/{code}': {
+      get: {
+        tags: ['Groups'],
+        summary: 'Get group planning session status',
+        security: [],
+        parameters: [{ name: 'code', in: 'path', required: true, schema: { type: 'string', minLength: 6, maxLength: 20 } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/groups/{code}/join': {
+      post: {
+        tags: ['Groups'],
+        summary: 'Submit participant preferences',
+        security: [],
+        parameters: [{ name: 'code', in: 'path', required: true, schema: { type: 'string', minLength: 6, maxLength: 20 } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/GroupJoinRequest' } } } },
+        responses: { '201': { $ref: '#/components/responses/Created' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/groups/{code}/generate': {
+      post: {
+        tags: ['Groups'],
+        summary: 'Generate itinerary from blended group preferences',
+        security: [],
+        parameters: [{ name: 'code', in: 'path', required: true, schema: { type: 'string', minLength: 6, maxLength: 20 } }],
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' } },
       },
     },

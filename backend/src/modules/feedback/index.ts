@@ -62,6 +62,7 @@ function toFeedbackResponse(feedback: FeedbackWithReviewRelations) {
     entityType: feedback.entityType,
     entityId: feedback.entityId,
     feedbackType: feedback.feedbackType,
+    reportType: feedback.reportType,
     factId: feedback.factId,
     submittedValue: feedback.submittedValue,
     note: feedback.note,
@@ -92,7 +93,7 @@ function toFeedbackResponse(feedback: FeedbackWithReviewRelations) {
 // Rate limit + auth + XSS sanitization on feedback submissions
 router.post('/', feedbackLimiter, requireAuth, sanitizeBody, async (req, res, next) => {
   try {
-    const { entityId: rawEntityId, entityType, feedbackType, comment } = feedbackSchema.parse(req.body);
+    const { entityId: rawEntityId, entityType, feedbackType, reportType, comment } = feedbackSchema.parse(req.body);
     const entityId = entityType === 'ATTRACTION' ? resolveAttractionId(rawEntityId) : rawEntityId;
     let factId: string | null = null;
 
@@ -125,6 +126,7 @@ router.post('/', feedbackLimiter, requireAuth, sanitizeBody, async (req, res, ne
         entityType,
         entityId,
         feedbackType,
+        reportType,
         factId,
         note: comment,
       },
@@ -136,6 +138,7 @@ router.post('/', feedbackLimiter, requireAuth, sanitizeBody, async (req, res, ne
         success: true,
         message: 'Feedback received and queued for review',
         status: feedback.status,
+        reportType: feedback.reportType,
       },
     });
 
