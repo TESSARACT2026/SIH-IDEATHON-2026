@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, MapPin, IndianRupee, Clock, Calendar, Info, ShieldCheck, Store, Heart } from 'lucide-react';
+import { ArrowLeft, MapPin, IndianRupee, Clock, Calendar, Info, ShieldCheck, Store, Heart, Star } from 'lucide-react';
 import { MainLayout } from '../components/layout/MainLayout';
 import { knowledgeApi } from '../api/services/knowledgeApi';
 import { guideApi } from '../api/services/guideApi';
@@ -54,6 +54,19 @@ export const DestinationPage: React.FC = () => {
     enabled: !!id,
   });
 
+  const { data: destinationRatings = [] } = useQuery({
+    queryKey: ['destination-rating-detail', id],
+    queryFn: () => knowledgeApi.getDestinationRatings({
+      destinationIds: [id],
+      startDate: new Date().toISOString(),
+      preferredTime: '09:00',
+      days: 3,
+      budgetBand: 'MODERATE',
+      transportPreference: 'MIXED',
+    }),
+    enabled: !!id,
+  });
+
   const destinationFavoriteMutation = useMutation({
     mutationFn: favoritesApi.addDestinationFavorite,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favorites'] }),
@@ -91,6 +104,7 @@ export const DestinationPage: React.FC = () => {
   const isDemoData = knowledgeApi.isUsingFallbackData();
   const visual = getDestinationVisual(destination.name, 0);
   const heroImage = visual.image;
+  const destinationRating = destinationRatings[0];
   const isDestinationSaved = destinationIds.has(destination.id)
     || (destinationFavoriteMutation.isPending && destinationFavoriteMutation.variables === destination.id);
 
@@ -114,17 +128,25 @@ export const DestinationPage: React.FC = () => {
             </div>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <h1 className="text-4xl md:text-6xl font-black text-white">{destination.name}</h1>
-              {user && (
-                <button
-                  type="button"
-                  onClick={() => destinationFavoriteMutation.mutate(destination.id)}
-                  disabled={destinationFavoriteMutation.isPending || isDestinationSaved}
-                  className={`inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold shadow-sm transition-colors hover:bg-orange-50 disabled:opacity-80 ${isDestinationSaved ? 'text-rose-500' : 'text-orange-600'}`}
-                >
-                  <Heart size={17} className={isDestinationSaved ? 'fill-current' : ''} />
-                  {isDestinationSaved ? 'Saved' : 'Save Destination'}
-                </button>
-              )}
+              <div className="flex flex-wrap items-center gap-3">
+                {destinationRating && (
+                  <div className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-black text-emerald-700 shadow-sm">
+                    <Star size={17} className="fill-emerald-600 text-emerald-600" />
+                    {destinationRating.score}/100 Fit
+                  </div>
+                )}
+                {user && (
+                  <button
+                    type="button"
+                    onClick={() => destinationFavoriteMutation.mutate(destination.id)}
+                    disabled={destinationFavoriteMutation.isPending || isDestinationSaved}
+                    className={`inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold shadow-sm transition-colors hover:bg-orange-50 disabled:opacity-80 ${isDestinationSaved ? 'text-rose-500' : 'text-orange-600'}`}
+                  >
+                    <Heart size={17} className={isDestinationSaved ? 'fill-current' : ''} />
+                    {isDestinationSaved ? 'Saved' : 'Save Destination'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -203,6 +225,27 @@ export const DestinationPage: React.FC = () => {
           </div>
 
           <div className="space-y-6">
+            {destinationRating && (
+              <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-6 text-emerald-900 shadow-sm dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-100">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">Destination Fit</p>
+                    <h3 className="mt-1 text-2xl font-black">{destinationRating.score}/100</h3>
+                    <p className="mt-1 font-bold">{destinationRating.label}</p>
+                  </div>
+                  <Star className="h-6 w-6 fill-emerald-600 text-emerald-600" />
+                </div>
+                <p className="mt-4 text-sm text-emerald-800 dark:text-emerald-200">{destinationRating.summary}</p>
+                {destinationRating.topReasons.length > 0 && (
+                  <ul className="mt-3 space-y-1 text-xs text-emerald-700 dark:text-emerald-300">
+                    {destinationRating.topReasons.slice(0, 2).map((reason) => (
+                      <li key={reason}>• {reason}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
             <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-3xl p-8 text-white shadow-lg">
               <h3 className="text-xl font-bold mb-6 opacity-90">Trip Estimation</h3>
               <div className="space-y-6">
