@@ -113,6 +113,7 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/scoring/trip-health/:id` | Yes | Calculate trip risk/health score for a saved trip. |
 | POST | `/api/v1/scoring/tourism-impact` | No | Compare popular and responsible route impact metrics. |
 | GET | `/api/v1/scoring/trip-trust/:id` | Yes | Aggregate itinerary fact trust into a trip-level score. |
+| POST | `/api/v1/scoring/destination-ratings` | No | Rate destinations against traveller date, time, budget, accessibility, interests, pace, and transport inputs. |
 | POST | `/api/v1/groups` | Yes | Create a persisted group planning session. |
 | GET | `/api/v1/groups/:code` | No | Get group planning session status. |
 | POST | `/api/v1/groups/:code/join` | No | Submit participant preferences for a group plan. |
@@ -785,6 +786,64 @@ objects; weather, crowd, and transport actions include a ready
 Returns popular and responsible route plans with crowd pressure, local-business
 exposure, travel-distance, environmental sensitivity, cultural sensitivity, and
 overall impact-score metrics.
+
+`POST /api/v1/scoring/destination-ratings`
+
+```json
+{
+  "destinationIds": ["bhubaneswar-odisha", "jaipur-rajasthan"],
+  "startDate": "2026-09-05T09:00:00.000Z",
+  "preferredTime": "09:00",
+  "days": 3,
+  "pace": "MODERATE",
+  "budgetBand": "BUDGET",
+  "accessibilityWheelchair": true,
+  "interests": ["Museums & Culture"],
+  "transportPreference": "MIXED"
+}
+```
+
+Returns sorted destination fit ratings computed from stored attraction data,
+verified/live ticket facts, accessibility fields, selected interests, seasonal
+travel date, preferred start time, trip duration, pace, budget band, and
+transport preference. Auth is not required.
+
+Example response:
+
+```json
+{
+  "data": {
+    "ratings": [
+      {
+        "destinationId": "bhubaneswar-odisha",
+        "destinationName": "Bhubaneswar",
+        "score": 86,
+        "label": "Excellent Fit",
+        "summary": "3/8 stops support wheelchair access",
+        "topReasons": [
+          "3/8 stops support wheelchair access",
+          "5/8 attractions match selected interests",
+          "8/8 stops fit budget ticket assumptions"
+        ],
+        "breakdown": [
+          {
+            "category": "accessibility",
+            "score": 38,
+            "weight": 25,
+            "reasons": ["3/8 stops support wheelchair access"]
+          }
+        ],
+        "computedAt": "2026-09-02T14:15:00.000Z"
+      }
+    ],
+    "computedAt": "2026-09-02T14:15:00.000Z"
+  }
+}
+```
+
+If `destinationIds` is omitted, all destinations are rated. Legacy frontend
+destination slugs are accepted. Invalid dates, times, budget bands, pace, or
+transport values return `400 VALIDATION_ERROR`.
 
 `GET /api/v1/scoring/trip-trust/:id`
 

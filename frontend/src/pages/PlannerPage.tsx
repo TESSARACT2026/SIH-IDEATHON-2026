@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Compass, Sparkles, MapPin, AlertCircle, RefreshCw, Save } from 'lucide-react';
@@ -41,6 +41,8 @@ export const PlannerPage: React.FC = () => {
       accessibilityWheelchair: false,
       interests: [],
       transportPreference: 'MIXED',
+      budgetBand: 'MODERATE',
+      preferredStartTime: '09:00',
     },
   });
 
@@ -82,6 +84,34 @@ export const PlannerPage: React.FC = () => {
     },
     enabled: destinations.length > 0,
   });
+
+  const { data: destinationRatings = [] } = useQuery({
+    queryKey: [
+      'destination-ratings',
+      destinations.map((destination) => destination.id).join(','),
+      plannerInput.startDate,
+      plannerInput.days,
+      plannerInput.preferences.pace,
+      plannerInput.preferences.accessibilityWheelchair,
+      plannerInput.preferences.transportPreference,
+      plannerInput.preferences.budgetBand,
+      plannerInput.preferences.preferredStartTime,
+      plannerInput.preferences.interests.join(','),
+    ],
+    queryFn: () => knowledgeApi.getDestinationRatings({
+      destinationIds: destinations.map((destination) => destination.id),
+      startDate: plannerInput.startDate,
+      preferredTime: plannerInput.preferences.preferredStartTime,
+      days: plannerInput.days,
+      preferences: plannerInput.preferences,
+    }),
+    enabled: destinations.length > 0,
+  });
+
+  const destinationRatingsById = useMemo(
+    () => Object.fromEntries(destinationRatings.map((rating) => [rating.destinationId, rating])),
+    [destinationRatings],
+  );
 
   // 4. Generate Itinerary Mutation
   const generateMutation = useMutation({
@@ -164,6 +194,7 @@ export const PlannerPage: React.FC = () => {
             onChange={setPlannerInput}
             onSubmit={handleGenerate}
             isLoading={generateMutation.isPending}
+            destinationRatings={destinationRatingsById}
           />
 
           {planData && (

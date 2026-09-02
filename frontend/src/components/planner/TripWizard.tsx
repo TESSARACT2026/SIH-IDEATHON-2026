@@ -1,9 +1,9 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { MapPin, Calendar, Clock, Accessibility, Sparkles, Navigation, Layers } from 'lucide-react';
+import { MapPin, Calendar, Clock, Accessibility, Sparkles, Navigation, Layers, Wallet, Star } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Destination, Pace, TransportPreference, PlannerInput } from '../../types/domain';
+import { BudgetBand, Destination, DestinationRating, Pace, TransportPreference, PlannerInput } from '../../types/domain';
 
 interface TripWizardProps {
   destinations: Destination[];
@@ -11,6 +11,7 @@ interface TripWizardProps {
   onChange: (input: PlannerInput) => void;
   onSubmit: () => void;
   isLoading: boolean;
+  destinationRatings?: Record<string, DestinationRating>;
 }
 
 const INTEREST_OPTIONS = [
@@ -28,8 +29,10 @@ export const TripWizard: React.FC<TripWizardProps> = ({
   onChange,
   onSubmit,
   isLoading,
+  destinationRatings = {},
 }) => {
   const { t } = useTranslation();
+  const selectedRating = input.destinationId ? destinationRatings[input.destinationId] : undefined;
 
   const handleInterestToggle = (interest: string) => {
     const current = input.preferences.interests;
@@ -73,13 +76,26 @@ export const TripWizard: React.FC<TripWizardProps> = ({
             {destinations.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name} ({d.region ? `${d.region}, ` : ''}{d.country})
+                {destinationRatings[d.id] ? ` - ${destinationRatings[d.id].score} Fit` : ''}
               </option>
             ))}
           </select>
+          {selectedRating && (
+            <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5 font-bold">
+                  <Star className="h-3.5 w-3.5 fill-emerald-600 text-emerald-600" />
+                  {selectedRating.score}/100 {selectedRating.label}
+                </span>
+                <span className="text-emerald-700">{selectedRating.breakdown.length ? 'Backend rated' : 'Local rated'}</span>
+              </div>
+              <p className="mt-1 text-emerald-700">{selectedRating.summary}</p>
+            </div>
+          )}
         </div>
 
         {/* Start Date & Days */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 flex items-center gap-1.5">
               <Calendar className="h-3.5 w-3.5 text-orange-600" />
@@ -120,6 +136,24 @@ export const TripWizard: React.FC<TripWizardProps> = ({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5 text-orange-600" />
+              Start Time
+            </label>
+            <input
+              type="time"
+              value={input.preferences.preferredStartTime || '09:00'}
+              onChange={(e) =>
+                onChange({
+                  ...input,
+                  preferences: { ...input.preferences, preferredStartTime: e.target.value || '09:00' },
+                })
+              }
+              className="w-full h-10 px-3 border border-slate-200 rounded-xl text-sm bg-slate-50/50 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
           </div>
         </div>
 
@@ -176,6 +210,31 @@ export const TripWizard: React.FC<TripWizardProps> = ({
             <option value="PUBLIC_TRANSIT">{t('planner.transports.PUBLIC_TRANSIT')}</option>
             <option value="CAB">{t('planner.transports.CAB')}</option>
             <option value="OWN_VEHICLE">{t('planner.transports.OWN_VEHICLE')}</option>
+          </select>
+        </div>
+
+        {/* Budget Band */}
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 flex items-center gap-1.5">
+            <Wallet className="h-3.5 w-3.5 text-orange-600" />
+            Budget
+          </label>
+          <select
+            value={input.preferences.budgetBand || 'MODERATE'}
+            onChange={(e) =>
+              onChange({
+                ...input,
+                preferences: {
+                  ...input.preferences,
+                  budgetBand: e.target.value as BudgetBand,
+                },
+              })
+            }
+            className="w-full h-10 px-3 border border-slate-200 rounded-xl text-sm bg-slate-50/50 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+          >
+            <option value="BUDGET">Budget</option>
+            <option value="MODERATE">Moderate</option>
+            <option value="PREMIUM">Premium</option>
           </select>
         </div>
 

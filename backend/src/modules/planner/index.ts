@@ -30,6 +30,8 @@ const plannerInputSchema = z.object({
     walkingToleranceMinutes: z.number().int().min(5).max(240).default(30).optional(),
     indoorOutdoorPreference: z.enum(['indoor', 'outdoor', 'mixed']).default('mixed').optional(),
     localBusinessPreference: z.boolean().default(false).optional(),
+    budgetBand: z.enum(['BUDGET', 'MODERATE', 'PREMIUM']).default('MODERATE').optional(),
+    preferredStartTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default('09:00').optional(),
   }).strict(),
 }).strict();
 

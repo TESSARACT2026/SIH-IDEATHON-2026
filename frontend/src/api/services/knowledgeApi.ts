@@ -1,5 +1,5 @@
 import { apiClient } from '../client';
-import { Destination, Attraction } from '../../types/domain';
+import { Destination, Attraction, DestinationRating, DestinationRatingRequest } from '../../types/domain';
 
 let usingFallbackData = false;
 
@@ -695,5 +695,75 @@ export const knowledgeApi = {
     }
   },
 
+  getDestinationRatings: async (input: DestinationRatingRequest = {}): Promise<DestinationRating[]> => {
+    try {
+      const response = await apiClient.post<{ data: { ratings: DestinationRating[] } }>('/scoring/destination-ratings', input);
+      return response.data?.data?.ratings || [];
+    } catch {
+      return fallbackDestinationRatings(input);
+    }
+  },
+
   isUsingFallbackData: () => usingFallbackData,
+};
+
+const ratingLabel = (score: number, count: number) => {
+  if (count === 0) return 'Limited Data';
+  if (score >= 85) return 'Excellent Fit';
+  if (score >= 70) return 'Good Fit';
+  if (score >= 55) return 'Fair Fit';
+  return 'Weak Fit';
+};
+
+const lowerTokens = (text: string) =>
+  text.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 2 && !['and', 'the', 'for', 'with'].includes(token));
+
+const fallbackDestinationRatings = (input: DestinationRatingRequest): DestinationRating[] => {
+  const ids = input.destinationIds?.length ? new Set(input.destinationIds) : null;
+  const interestTokens = new Set((input.interests || input.preferences?.interests || []).flatMap(lowerTokens));
+  const wheelchair = input.accessibilityWheelchair ?? input.preferences?.accessibilityWheelchair ?? false;
+  const budgetBand = input.budgetBand ?? input.preferences?.budgetBand ?? 'MODERATE';
+  const budgetLimit = budgetBand === 'BUDGET' ? 100 : budgetBand === 'PREMIUM' ? 1000 : 350;
+  const preferredTime = input.preferredTime ?? input.preferences?.preferredStartTime ?? '09:00';
+  const hour = Number(preferredTime.split(':')[0] || 9);
+  const month = input.startDate ? new Date(input.startDate).getMonth() + 1 : new Date().getMonth() + 1;
+
+  return DEFAULT_DESTINATIONS
+    .filter((destination) => !ids || ids.has(destination.id))
+    .map((destination) => {
+      const attractions = DEFAULT_ATTRACTIONS[destination.id] || [];
+      const accessible = attractions.filter((attraction) => attraction.accessibilityWheelchair).length;
+      const interestMatches = attractions.filter((attraction) => {
+        const text = `${attraction.name} ${attraction.description || ''} ${attraction.categories.join(' ')}`;
+        const attractionTokens = new Set(lowerTokens(text));
+        return [...interestTokens].some((token) => attractionTokens.has(token));
+      }).length;
+      const cheapStops = attractions.filter((attraction) => {
+        const text = `${attraction.name} ${attraction.categories.join(' ')}`.toLowerCase();
+        const estimate = /(market|temple|beach|park|ghat)/.test(text) ? 0 : /(zoo|safari|adventure)/.test(text) ? 250 : 80;
+        return estimate <= budgetLimit;
+      }).length;
+      const outdoor = attractions.length
+        ? attractions.reduce((sum, attraction) => sum + (attraction.indoorOutdoor === 'outdoor' ? 1 : attraction.indoorOutdoor === 'mixed' ? 0.5 : 0), 0) / attractions.length
+        : 0.5;
+      const accessibilityScore = !wheelchair ? 100 : attractions.length ? (accessible / attractions.length) * 100 : 35;
+      const interestScore = interestTokens.size === 0 ? 80 : attractions.length ? 35 + (interestMatches / attractions.length) * 65 : 40;
+      const budgetScore = attractions.length ? (cheapStops / attractions.length) * 100 : 45;
+      const seasonalPenalty = (month >= 4 && month <= 9 ? 20 * outdoor : 0) + (hour >= 12 && hour <= 16 ? 18 * outdoor : 0);
+      const score = Math.max(0, Math.min(100, Math.round(accessibilityScore * 0.25 + interestScore * 0.25 + budgetScore * 0.2 + (100 - seasonalPenalty) * 0.2 + 75 * 0.1)));
+
+      return {
+        destinationId: destination.id,
+        destinationName: destination.name,
+        score,
+        label: ratingLabel(score, attractions.length),
+        summary: attractions.length ? `${accessible}/${attractions.length} wheelchair stops, ${cheapStops}/${attractions.length} budget-friendly stops` : 'Not enough attraction data yet',
+        topReasons: attractions.length
+          ? [`${interestMatches}/${attractions.length} stops match selected interests`, `${cheapStops}/${attractions.length} stops fit ${budgetBand.toLowerCase()} assumptions`]
+          : ['No attraction records available'],
+        breakdown: [],
+        computedAt: new Date().toISOString(),
+      };
+    })
+    .sort((a, b) => b.score - a.score || a.destinationName.localeCompare(b.destinationName));
 };
