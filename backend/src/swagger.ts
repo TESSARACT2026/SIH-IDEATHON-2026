@@ -991,7 +991,7 @@ export const openApiDocument = {
       get: {
         tags: ['Hotels'],
         summary: 'Fetch trusted hotel offers once providers are configured',
-        description: 'Returns an empty list with unavailable metadata until the Staying API offer adapter is implemented. Never fabricates prices.',
+        description: 'Fetches Staying API hotel offers when a direct listing id or price-compare mapping is supplied. Live 202 Accepted jobs are polled briefly before returning retry-later metadata. Never fabricates prices.',
         security: [],
         parameters: [
           { name: 'hotelId', in: 'query', required: true, schema: { type: 'string', minLength: 1, maxLength: 150 } },
