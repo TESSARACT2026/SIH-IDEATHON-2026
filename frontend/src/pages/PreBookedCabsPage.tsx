@@ -727,34 +727,65 @@ export const PreBookedCabsPage: React.FC = () => {
                 {/* Selected stop detail */}
                 {selectedStop && (() => {
                   const d = selectedStop.distKm ?? 1;
-                  const f = estimateFare(d, 'mini', new Date());
-                  const best = Math.min(f.ola, f.uber, f.rapido);
-                  const bestProvider = f.ola === best ? { name: 'Ola', url: 'https://olacabs.com' }
-                    : f.uber === best ? { name: 'Uber', url: 'https://uber.com' }
-                    : { name: 'Rapido', url: 'https://rapido.bike' };
+                  const dt = new Date();
+                  const stopEstimates = buildEstimates(d, dt);
+                  const stopCheapest = stopEstimates.length > 0
+                    ? stopEstimates.reduce((a, b) => a.estimatedFare < b.estimatedFare ? a : b)
+                    : null;
+
                   return (
-                    <div className="mt-5 p-5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg">
-                      <div className="flex items-center justify-between flex-wrap gap-4">
-                        <div>
-                          <p className="text-xs font-bold opacity-70 uppercase tracking-wider mb-1">Selected Stop</p>
-                          <p className="text-xl font-black">{selectedStop.emoji} {selectedStop.name}</p>
-                          <p className="text-sm opacity-80">{d.toFixed(1)} km · {selectedStop.type} · {shortCity}</p>
-                        </div>
-                        <div className="flex gap-3 flex-wrap">
-                          <div className="text-center">
-                            <p className="text-xs opacity-70">Best Price</p>
-                            <p className="text-2xl font-black">₹{best}</p>
-                            <p className="text-xs opacity-80">via {bestProvider.name}</p>
+                    <div className="mt-8 p-6 bg-white rounded-3xl border border-gray-100 shadow-sm">
+                      <div className="flex flex-wrap gap-3 mb-6 items-center border-b border-gray-100 pb-5">
+                        <div className="flex items-center gap-3">
+                          <span className="text-3xl">{selectedStop.emoji}</span>
+                          <div>
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-0.5">Selected Stop</p>
+                            <p className="text-lg font-black text-gray-900 leading-none">{selectedStop.name}</p>
                           </div>
-                          <a
-                            href={bestProvider.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="self-center px-5 py-2.5 bg-white text-blue-700 font-black rounded-xl text-sm hover:bg-blue-50 transition-all"
-                          >
-                            Book Now →
-                          </a>
                         </div>
+                        <div className="ml-auto flex gap-3 flex-wrap">
+                          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-xs font-semibold text-blue-700">
+                            <Car size={13} /> {d.toFixed(1)} km
+                          </div>
+                          <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-100 rounded-lg text-xs font-semibold text-purple-700">
+                            <Calendar size={13} /> {dt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                          </div>
+                          <div className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 border border-orange-100 rounded-lg text-xs font-semibold text-orange-700">
+                            {cabTypes.find(c => c.key === cabType)?.icon} {cabTypes.find(c => c.key === cabType)?.label}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Recommended banner */}
+                      {stopCheapest && (
+                        <div className="flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-green-500 to-emerald-500 text-white mb-6 shadow-md shadow-green-100">
+                          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl shrink-0">
+                            {stopCheapest.logo}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold opacity-80 uppercase tracking-wider">⭐ Recommended</p>
+                            <p className="font-black text-lg">{stopCheapest.provider} — ₹{stopCheapest.estimatedFare}</p>
+                            <p className="text-xs opacity-80">{stopCheapest.category} · {stopCheapest.eta} min ETA · {stopCheapest.rating}★</p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <CheckCircle2 size={18} className="opacity-80" />
+                            <span className="font-bold text-sm hidden sm:block">Cheapest Pick</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Price comparison cards */}
+                      <h2 className="text-sm font-black text-gray-800 mb-4 flex items-center gap-2">
+                        <Filter size={14} className="text-orange-500" /> Price Comparison
+                      </h2>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {stopEstimates.map(est => (
+                          <CabCard
+                            key={est.provider}
+                            estimate={est}
+                            isRecommended={stopCheapest?.provider === est.provider}
+                          />
+                        ))}
                       </div>
                     </div>
                   );
