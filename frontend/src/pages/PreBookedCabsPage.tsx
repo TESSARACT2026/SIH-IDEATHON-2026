@@ -95,6 +95,100 @@ const CITIES: { name: string; coords: [number, number] }[] = [
 ];
 
 // ──────────────────────────────────────────────
+// Intra-city stops by city (short destinations)
+// ──────────────────────────────────────────────
+interface CityStop {
+  name: string;
+  type: string;
+  emoji: string;
+  coords: [number, number];
+  distKm?: number; // filled at runtime
+}
+
+const CITY_STOPS: Record<string, CityStop[]> = {
+  'Bhubaneswar': [
+    { name: 'Lingaraj Temple', type: 'Heritage', emoji: '🛕', coords: [20.2390, 85.8337] },
+    { name: 'Udayagiri Caves', type: 'Heritage', emoji: '🏛️', coords: [20.2556, 85.7939] },
+    { name: 'Nandankanan Zoo', type: 'Nature', emoji: '🦁', coords: [20.3958, 85.8222] },
+    { name: 'ISKCON Temple', type: 'Spiritual', emoji: '🙏', coords: [20.3018, 85.8374] },
+    { name: 'Ekamra Haat', type: 'Shopping', emoji: '🛍️', coords: [20.2812, 85.8395] },
+    { name: 'Dhauli Peace Pagoda', type: 'Historic', emoji: '☮️', coords: [20.1956, 85.8423] },
+    { name: 'Regional Museum', type: 'Culture', emoji: '🏺', coords: [20.2671, 85.8393] },
+    { name: 'Bhubaneswar Railway Station', type: 'Transport', emoji: '🚉', coords: [20.2692, 85.8436] },
+  ],
+  'New Delhi': [
+    { name: 'Red Fort', type: 'Heritage', emoji: '🏯', coords: [28.6562, 77.2410] },
+    { name: 'Qutub Minar', type: 'Heritage', emoji: '🗼', coords: [28.5245, 77.1855] },
+    { name: 'India Gate', type: 'Landmark', emoji: '🏛️', coords: [28.6129, 77.2295] },
+    { name: 'Lotus Temple', type: 'Spiritual', emoji: '🌸', coords: [28.5535, 77.2588] },
+    { name: 'Humayun\'s Tomb', type: 'Heritage', emoji: '⚰️', coords: [28.5933, 77.2507] },
+    { name: 'Connaught Place', type: 'Shopping', emoji: '🛍️', coords: [28.6315, 77.2167] },
+    { name: 'IGI Airport T3', type: 'Transport', emoji: '✈️', coords: [28.5562, 77.1000] },
+    { name: 'New Delhi Railway Station', type: 'Transport', emoji: '🚉', coords: [28.6431, 77.2194] },
+  ],
+  'Mumbai': [
+    { name: 'Gateway of India', type: 'Landmark', emoji: '🏛️', coords: [18.9220, 72.8347] },
+    { name: 'Marine Drive', type: 'Scenic', emoji: '🌊', coords: [18.9438, 72.8236] },
+    { name: 'Elephanta Caves', type: 'Heritage', emoji: '🏛️', coords: [18.9633, 72.9315] },
+    { name: 'Siddhivinayak Temple', type: 'Spiritual', emoji: '🙏', coords: [19.0168, 72.8302] },
+    { name: 'Chhatrapati Shivaji Terminus', type: 'Transport', emoji: '🚉', coords: [18.9400, 72.8347] },
+    { name: 'Juhu Beach', type: 'Nature', emoji: '🏖️', coords: [19.0968, 72.8264] },
+    { name: 'Dharavi', type: 'Culture', emoji: '🏘️', coords: [19.0432, 72.8535] },
+    { name: 'BKC Business District', type: 'Business', emoji: '🏢', coords: [19.0596, 72.8656] },
+  ],
+  'Bengaluru': [
+    { name: 'Lalbagh Botanical Garden', type: 'Nature', emoji: '🌿', coords: [12.9507, 77.5848] },
+    { name: 'Cubbon Park', type: 'Nature', emoji: '🌳', coords: [12.9763, 77.5929] },
+    { name: 'Bangalore Palace', type: 'Heritage', emoji: '🏰', coords: [12.9987, 77.5921] },
+    { name: 'ISKCON Temple Bangalore', type: 'Spiritual', emoji: '🙏', coords: [13.0097, 77.5510] },
+    { name: 'MG Road', type: 'Shopping', emoji: '🛍️', coords: [12.9753, 77.6126] },
+    { name: 'Kempegowda Airport', type: 'Transport', emoji: '✈️', coords: [13.1986, 77.7066] },
+    { name: 'Vidhana Soudha', type: 'Government', emoji: '🏛️', coords: [12.9791, 77.5913] },
+    { name: 'Electronic City', type: 'Business', emoji: '💻', coords: [12.8437, 77.6636] },
+  ],
+  'Jaipur': [
+    { name: 'Amber Fort', type: 'Heritage', emoji: '🏰', coords: [26.9855, 75.8513] },
+    { name: 'Hawa Mahal', type: 'Heritage', emoji: '🏛️', coords: [26.9239, 75.8267] },
+    { name: 'City Palace', type: 'Heritage', emoji: '👑', coords: [26.9258, 75.8237] },
+    { name: 'Jantar Mantar', type: 'Science', emoji: '🔭', coords: [26.9247, 75.8242] },
+    { name: 'Nahargarh Fort', type: 'Heritage', emoji: '⚔️', coords: [26.9444, 75.8068] },
+    { name: 'Johri Bazaar', type: 'Shopping', emoji: '💎', coords: [26.9188, 75.8274] },
+    { name: 'Jaipur Junction', type: 'Transport', emoji: '🚉', coords: [26.9197, 75.7889] },
+    { name: 'Albert Hall Museum', type: 'Culture', emoji: '🏺', coords: [26.9114, 75.8193] },
+  ],
+  'Hyderabad': [
+    { name: 'Charminar', type: 'Heritage', emoji: '🕌', coords: [17.3616, 78.4747] },
+    { name: 'Golconda Fort', type: 'Heritage', emoji: '🏰', coords: [17.3833, 78.4011] },
+    { name: 'Hussain Sagar Lake', type: 'Scenic', emoji: '🌊', coords: [17.4239, 78.4738] },
+    { name: 'Ramoji Film City', type: 'Entertainment', emoji: '🎬', coords: [17.2543, 78.6808] },
+    { name: 'Birla Mandir', type: 'Spiritual', emoji: '🛕', coords: [17.4062, 78.4691] },
+    { name: 'HITECH City', type: 'Business', emoji: '💻', coords: [17.4435, 78.3772] },
+    { name: 'Rajiv Gandhi Airport', type: 'Transport', emoji: '✈️', coords: [17.2403, 78.4294] },
+    { name: 'Laad Bazaar', type: 'Shopping', emoji: '📿', coords: [17.3618, 78.4761] },
+  ],
+  'Chennai': [
+    { name: 'Marina Beach', type: 'Nature', emoji: '🏖️', coords: [13.0500, 80.2824] },
+    { name: 'Kapaleeshwarar Temple', type: 'Spiritual', emoji: '🛕', coords: [13.0337, 80.2692] },
+    { name: 'Fort St. George', type: 'Heritage', emoji: '🏰', coords: [13.0810, 80.2870] },
+    { name: 'Chennai Central Railway', type: 'Transport', emoji: '🚉', coords: [13.0827, 80.2758] },
+    { name: 'T Nagar Shopping', type: 'Shopping', emoji: '🛍️', coords: [13.0418, 80.2341] },
+    { name: 'Valluvar Kottam', type: 'Culture', emoji: '📜', coords: [13.0584, 80.2453] },
+    { name: 'Chennai Airport', type: 'Transport', emoji: '✈️', coords: [12.9900, 80.1693] },
+    { name: 'Mahabalipuram', type: 'Heritage', emoji: '🏛️', coords: [12.6269, 80.1927] },
+  ],
+  'Kolkata': [
+    { name: 'Victoria Memorial', type: 'Heritage', emoji: '🏛️', coords: [22.5448, 88.3426] },
+    { name: 'Howrah Bridge', type: 'Landmark', emoji: '🌉', coords: [22.5851, 88.3468] },
+    { name: 'Dakshineswar Temple', type: 'Spiritual', emoji: '🛕', coords: [22.6545, 88.3579] },
+    { name: 'Indian Museum', type: 'Culture', emoji: '🏺', coords: [22.5574, 88.3511] },
+    { name: 'Science City', type: 'Science', emoji: '🔬', coords: [22.5369, 88.3948] },
+    { name: 'Park Street', type: 'Shopping', emoji: '🛍️', coords: [22.5502, 88.3516] },
+    { name: 'Howrah Station', type: 'Transport', emoji: '🚉', coords: [22.5833, 88.3423] },
+    { name: 'Kolkata Airport', type: 'Transport', emoji: '✈️', coords: [22.6541, 88.4467] },
+  ],
+};
+
+// ──────────────────────────────────────────────
 // Sub-components
 // ──────────────────────────────────────────────
 function LocationInput({
@@ -235,6 +329,11 @@ export const PreBookedCabsPage: React.FC = () => {
   const [error, setError] = useState('');
   const [distance, setDistance] = useState<number | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
+  // Short destinations state
+  const [shortCity, setShortCity] = useState<string>('');
+  const [userCoords, setUserCoords] = useState<[number, number] | null>(null);
+  const [shortLocating, setShortLocating] = useState(false);
+  const [selectedStop, setSelectedStop] = useState<CityStop | null>(null);
 
   // Pre-fill today's date & current time
   useEffect(() => {
@@ -499,6 +598,178 @@ export const PreBookedCabsPage: React.FC = () => {
             </p>
           </>
         )}
+
+        {/* ── SHORT DESTINATIONS ── */}
+        <div className="mt-12 mb-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center text-lg">📍</div>
+            <div>
+              <h2 className="text-xl font-black text-gray-900">Short Destinations</h2>
+              <p className="text-sm text-gray-500">Explore stops within a city · detect your location for nearby picks</p>
+            </div>
+          </div>
+
+          {/* City selector + locate me */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+            <div className="flex flex-col sm:flex-row gap-3 items-end">
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Select City</label>
+                <select
+                  value={shortCity}
+                  onChange={e => { setShortCity(e.target.value); setSelectedStop(null); }}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 bg-white transition-all"
+                >
+                  <option value="">-- Pick a city --</option>
+                  {Object.keys(CITY_STOPS).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShortLocating(true);
+                  navigator.geolocation.getCurrentPosition(
+                    pos => {
+                      const { latitude, longitude } = pos.coords;
+                      setUserCoords([latitude, longitude]);
+                      // find nearest city in CITY_STOPS
+                      let nearest = Object.keys(CITY_STOPS)[0];
+                      let minD = Infinity;
+                      CITIES.forEach(c => {
+                        const d = haversine([latitude, longitude], c.coords);
+                        if (d < minD && CITY_STOPS[c.name]) { minD = d; nearest = c.name; }
+                      });
+                      setShortCity(nearest);
+                      setSelectedStop(null);
+                      setShortLocating(false);
+                    },
+                    () => setShortLocating(false),
+                  );
+                }}
+                className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-all shrink-0 shadow-sm"
+              >
+                {shortLocating
+                  ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Locating...</>
+                  : <><Navigation size={15} /> Use My Location</>
+                }
+              </button>
+            </div>
+            {userCoords && shortCity && (
+              <p className="mt-2 text-xs text-blue-600 font-medium">
+                📍 Located near <strong>{shortCity}</strong> · showing stops sorted by distance from you
+              </p>
+            )}
+          </div>
+
+          {/* Stop cards */}
+          {shortCity && CITY_STOPS[shortCity] && (() => {
+            const stops = CITY_STOPS[shortCity].map(s => ({
+              ...s,
+              distKm: userCoords ? haversine(userCoords, s.coords) : haversine(
+                CITIES.find(c => c.name === shortCity)?.coords ?? [0, 0], s.coords
+              ),
+            })).sort((a, b) => a.distKm - b.distKm);
+
+            const typeColors: Record<string, string> = {
+              Heritage: 'bg-amber-50 text-amber-700 border-amber-200',
+              Nature: 'bg-green-50 text-green-700 border-green-200',
+              Spiritual: 'bg-purple-50 text-purple-700 border-purple-200',
+              Shopping: 'bg-pink-50 text-pink-700 border-pink-200',
+              Transport: 'bg-blue-50 text-blue-700 border-blue-200',
+              Culture: 'bg-orange-50 text-orange-700 border-orange-200',
+              Business: 'bg-slate-50 text-slate-700 border-slate-200',
+              Landmark: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+              Scenic: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+              Science: 'bg-teal-50 text-teal-700 border-teal-200',
+              Government: 'bg-gray-50 text-gray-700 border-gray-200',
+              Entertainment: 'bg-rose-50 text-rose-700 border-rose-200',
+              Historic: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+            };
+
+            return (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {stops.map(stop => {
+                    const fare = estimateFare(stop.distKm, 'mini', new Date());
+                    const isSelected = selectedStop?.name === stop.name;
+                    return (
+                      <button
+                        key={stop.name}
+                        type="button"
+                        onClick={() => setSelectedStop(isSelected ? null : stop)}
+                        className={`text-left rounded-2xl border-2 p-4 transition-all duration-200 hover:shadow-md ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-50 shadow-md'
+                            : 'border-gray-100 bg-white hover:border-blue-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-2xl">{stop.emoji}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${typeColors[stop.type] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                            {stop.type}
+                          </span>
+                        </div>
+                        <p className="font-bold text-gray-900 text-sm mb-1 leading-tight">{stop.name}</p>
+                        <p className="text-xs text-gray-500 mb-3">{stop.distKm.toFixed(1)} km away</p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-500">Mini ~</span>
+                          <span className="font-black text-orange-600 text-sm">₹{fare.ola}</span>
+                        </div>
+                        <div className="flex gap-1 mt-2 text-[10px] font-semibold">
+                          <span className="bg-green-100 text-green-700 px-1.5 py-0.5 rounded-md">Ola ₹{fare.ola}</span>
+                          <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded-md">Uber ₹{fare.uber}</span>
+                          <span className="bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-md">Rapido ₹{fare.rapido}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Selected stop detail */}
+                {selectedStop && (() => {
+                  const d = selectedStop.distKm ?? 1;
+                  const f = estimateFare(d, 'mini', new Date());
+                  const best = Math.min(f.ola, f.uber, f.rapido);
+                  const bestProvider = f.ola === best ? { name: 'Ola', url: 'https://olacabs.com' }
+                    : f.uber === best ? { name: 'Uber', url: 'https://uber.com' }
+                    : { name: 'Rapido', url: 'https://rapido.bike' };
+                  return (
+                    <div className="mt-5 p-5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg">
+                      <div className="flex items-center justify-between flex-wrap gap-4">
+                        <div>
+                          <p className="text-xs font-bold opacity-70 uppercase tracking-wider mb-1">Selected Stop</p>
+                          <p className="text-xl font-black">{selectedStop.emoji} {selectedStop.name}</p>
+                          <p className="text-sm opacity-80">{d.toFixed(1)} km · {selectedStop.type} · {shortCity}</p>
+                        </div>
+                        <div className="flex gap-3 flex-wrap">
+                          <div className="text-center">
+                            <p className="text-xs opacity-70">Best Price</p>
+                            <p className="text-2xl font-black">₹{best}</p>
+                            <p className="text-xs opacity-80">via {bestProvider.name}</p>
+                          </div>
+                          <a
+                            href={bestProvider.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="self-center px-5 py-2.5 bg-white text-blue-700 font-black rounded-xl text-sm hover:bg-blue-50 transition-all"
+                          >
+                            Book Now →
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
+            );
+          })()}
+
+          {!shortCity && (
+            <div className="text-center py-12 text-gray-400">
+              <div className="text-5xl mb-3">🗺️</div>
+              <p className="text-sm font-medium">Select a city or use your location to see nearby stops</p>
+            </div>
+          )}
+        </div>
 
         {/* ── Empty state ── */}
         {estimates.length === 0 && !loading && (
