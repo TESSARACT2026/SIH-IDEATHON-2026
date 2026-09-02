@@ -87,7 +87,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'https://margdarshak-beta.vercel.app/dashboard',
+        redirectTo: import.meta.env.VITE_AUTH_REDIRECT_URL || `${window.location.origin}/dashboard`,
       },
     });
     if (error) throw error;
