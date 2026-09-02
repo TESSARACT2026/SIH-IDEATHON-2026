@@ -5,6 +5,7 @@ import {
   Filter, TrendingDown, CheckCircle2, ArrowRight, ArrowRightLeft,
   Clock, Check
 } from 'lucide-react';
+import { STATIONS } from '../data/trainStations';
 
 // ──────────────────────────────────────────────
 // Types
@@ -105,11 +106,6 @@ function getPlatformEstimates(basePrice: number): PlatformEstimate[] {
   ];
 }
 
-const CITIES = [
-  'New Delhi', 'Mumbai', 'Bengaluru', 'Hyderabad', 'Chennai', 'Kolkata', 'Jaipur',
-  'Pune', 'Ahmedabad', 'Surat', 'Agra', 'Varanasi', 'Amritsar', 'Bhubaneswar',
-  'Guwahati', 'Chandigarh', 'Kochi', 'Goa', 'Srinagar', 'Leh', 'Bhopal', 'Indore'
-];
 
 // ──────────────────────────────────────────────
 // Sub-components
@@ -189,8 +185,8 @@ export const TrainsPage: React.FC = () => {
   const [openSuggestFrom, setOpenSuggestFrom] = useState(false);
   const [openSuggestTo, setOpenSuggestTo] = useState(false);
 
-  const filteredFrom = CITIES.filter(c => from && c.toLowerCase().includes(from.toLowerCase()));
-  const filteredTo = CITIES.filter(c => to && c.toLowerCase().includes(to.toLowerCase()));
+  const filteredFrom = STATIONS.filter(s => from && (s.name.toLowerCase().includes(from.toLowerCase()) || s.code.toLowerCase().includes(from.toLowerCase())));
+  const filteredTo = STATIONS.filter(s => to && (s.name.toLowerCase().includes(to.toLowerCase()) || s.code.toLowerCase().includes(to.toLowerCase())));
 
   useEffect(() => {
     const tmrw = new Date();
@@ -263,11 +259,14 @@ export const TrainsPage: React.FC = () => {
               />
               {openSuggestFrom && filteredFrom.length > 0 && (
                 <ul className="absolute z-50 mt-2 w-full bg-white border border-gray-100 rounded-2xl shadow-xl max-h-60 overflow-auto py-2">
-                  {filteredFrom.map(c => (
-                    <li key={c} onMouseDown={() => { setFrom(c); setOpenSuggestFrom(false); }} className="px-5 py-3 hover:bg-orange-50 cursor-pointer flex items-center gap-3 text-gray-700 font-medium transition-colors">
-                      <Train size={16} className="text-orange-500 opacity-50" /> {c}
-                    </li>
-                  ))}
+                  {filteredFrom.map(s => {
+                    const label = `${s.name} (${s.code})`;
+                    return (
+                      <li key={s.code} onMouseDown={() => { setFrom(label); setOpenSuggestFrom(false); }} className="px-5 py-3 hover:bg-orange-50 cursor-pointer flex items-center gap-3 text-gray-700 font-medium transition-colors">
+                        <Train size={16} className="text-orange-500 opacity-50" /> {label}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -295,11 +294,14 @@ export const TrainsPage: React.FC = () => {
               />
               {openSuggestTo && filteredTo.length > 0 && (
                 <ul className="absolute z-50 mt-2 w-full bg-white border border-gray-100 rounded-2xl shadow-xl max-h-60 overflow-auto py-2">
-                  {filteredTo.map(c => (
-                    <li key={c} onMouseDown={() => { setTo(c); setOpenSuggestTo(false); }} className="px-5 py-3 hover:bg-orange-50 cursor-pointer flex items-center gap-3 text-gray-700 font-medium transition-colors">
-                      <Train size={16} className="text-orange-500 opacity-50" /> {c}
-                    </li>
-                  ))}
+                  {filteredTo.map(s => {
+                    const label = `${s.name} (${s.code})`;
+                    return (
+                      <li key={s.code} onMouseDown={() => { setTo(label); setOpenSuggestTo(false); }} className="px-5 py-3 hover:bg-orange-50 cursor-pointer flex items-center gap-3 text-gray-700 font-medium transition-colors">
+                        <Train size={16} className="text-orange-500 opacity-50" /> {label}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
