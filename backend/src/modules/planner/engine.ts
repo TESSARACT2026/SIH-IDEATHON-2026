@@ -56,6 +56,8 @@ export type PlannerPreferences = {
   walkingToleranceMinutes?: number;
   indoorOutdoorPreference?: 'indoor' | 'outdoor' | 'mixed';
   localBusinessPreference?: boolean;
+  budgetBand?: 'BUDGET' | 'MODERATE' | 'PREMIUM';
+  preferredStartTime?: string;
 };
 
 export type PlannerInput = {

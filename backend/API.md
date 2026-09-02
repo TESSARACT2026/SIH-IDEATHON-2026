@@ -113,6 +113,7 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/scoring/trip-health/:id` | Yes | Calculate trip risk/health score for a saved trip. |
 | POST | `/api/v1/scoring/tourism-impact` | No | Compare popular and responsible route impact metrics. |
 | GET | `/api/v1/scoring/trip-trust/:id` | Yes | Aggregate itinerary fact trust into a trip-level score. |
+| POST | `/api/v1/scoring/destination-ratings` | No | Rate destinations against traveller date, time, budget, accessibility, interests, pace, and transport inputs. |
 | POST | `/api/v1/groups` | Yes | Create a persisted group planning session. |
 | GET | `/api/v1/groups/:code` | No | Get group planning session status. |
 | POST | `/api/v1/groups/:code/join` | No | Submit participant preferences for a group plan. |

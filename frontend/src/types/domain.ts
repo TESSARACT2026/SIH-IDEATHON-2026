@@ -21,6 +21,7 @@ export type SourceType =
 export type CrowdLevel = 'LOW' | 'MODERATE' | 'HIGH' | 'SEVERE';
 export type Pace = 'RELAXED' | 'MODERATE' | 'PACKED';
 export type TransportPreference = 'WALKING' | 'PUBLIC_TRANSIT' | 'CAB' | 'OWN_VEHICLE' | 'MIXED';
+export type BudgetBand = 'BUDGET' | 'MODERATE' | 'PREMIUM';
 
 export interface Destination {
   id: string;
@@ -30,6 +31,48 @@ export interface Destination {
   latitude: number;
   longitude: number;
   timezone: string;
+}
+
+export interface DestinationRating {
+  destinationId: string;
+  destinationName: string;
+  score: number;
+  label: string;
+  summary: string;
+  topReasons: string[];
+  breakdown: Array<{
+    category: 'interests' | 'accessibility' | 'budget' | 'date_time' | 'pace_transport';
+    score: number;
+    weight: number;
+    reasons: string[];
+  }>;
+  computedAt: string;
+}
+
+export interface DestinationRatingRequest {
+  destinationIds?: string[];
+  startDate?: string;
+  preferredTime?: string;
+  days?: number;
+  pace?: Pace;
+  accessibilityWheelchair?: boolean;
+  accessibilityVision?: boolean;
+  accessibilityHearing?: boolean;
+  accessibilityCognitive?: boolean;
+  interests?: string[];
+  transportPreference?: TransportPreference;
+  budgetBand?: BudgetBand;
+  preferences?: Partial<{
+    pace: Pace;
+    accessibilityWheelchair: boolean;
+    accessibilityVision: boolean;
+    accessibilityHearing: boolean;
+    accessibilityCognitive: boolean;
+    interests: string[];
+    transportPreference: TransportPreference;
+    budgetBand: BudgetBand;
+    preferredStartTime: string;
+  }>;
 }
 
 export interface FactProvenance {
@@ -105,6 +148,8 @@ export interface PlannerInput {
     accessibilityWheelchair: boolean;
     interests: string[];
     transportPreference: TransportPreference;
+    budgetBand?: BudgetBand;
+    preferredStartTime?: string;
   };
 }
 

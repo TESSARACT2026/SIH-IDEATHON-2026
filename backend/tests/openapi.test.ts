@@ -13,6 +13,7 @@ const requiredPaths = [
   '/api/v1/scoring/trip-health/{id}',
   '/api/v1/scoring/tourism-impact',
   '/api/v1/scoring/trip-trust/{id}',
+  '/api/v1/scoring/destination-ratings',
   '/api/v1/budget/trips/{id}/breakdown',
   '/api/v1/hotels/providers',
   '/api/v1/hotels/search',
