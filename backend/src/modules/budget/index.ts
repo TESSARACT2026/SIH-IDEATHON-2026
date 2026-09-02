@@ -5,6 +5,7 @@ import { prisma } from '../../shared/db/index.js';
 import { AppError } from '../../shared/middleware/errorHandler.js';
 import { requireAuth } from '../../shared/middleware/auth.js';
 import { resolveAttractionId, resolveDestinationId } from '../../shared/utils/idAliases.js';
+import { accommodationAmountFromSelectedHotel, selectedHotelFromSnapshot } from '../hotels/selection.js';
 
 const router = Router();
 
@@ -236,6 +237,8 @@ export function transparentBudgetBreakdown(input: {
   stopCount: number;
   budgetBand?: BudgetBandName | null;
   transportPreference?: TransportPreferenceName | null;
+  accommodationAmount?: number | null;
+  hasSelectedHotel?: boolean;
 }) {
   const days = Math.max(1, input.days);
   const travellers = Math.max(1, input.travellers);
@@ -255,9 +258,23 @@ export function transparentBudgetBreakdown(input: {
   const transportation = roundTo50(transportPerDay[transportPreference] * days * (sharedTransport ? 1 : travellers));
   const food = roundTo50(foodPerTravellerPerDay[budgetBand] * days * travellers);
   const localExperiences = roundTo50(localExperiencePerStop[budgetBand] * Math.max(1, input.stopCount) * travellers);
-  const subtotal = entryTickets + transportation + food + localExperiences;
+  const accommodation = input.accommodationAmount ?? 0;
+  const subtotal = entryTickets + transportation + food + localExperiences + accommodation;
   const buffer = roundTo50(subtotal * 0.12);
   const totalAmount = subtotal + buffer;
+  const breakdown = [
+    { category: 'TRANSPORTATION', label: 'Transportation', amount: transportation, confidence: 'INFERRED' },
+    { category: 'ENTRY_TICKETS', label: 'Entry tickets', amount: entryTickets, confidence: entryTickets > 0 ? 'VERIFIED_OR_LIVE' : 'INFERRED' },
+    ...(input.hasSelectedHotel ? [{
+      category: 'ACCOMMODATION',
+      label: 'Accommodation',
+      amount: accommodation,
+      confidence: accommodation > 0 ? 'LIVE_OR_SAVED_PROVIDER' : 'UNAVAILABLE',
+    }] : []),
+    { category: 'FOOD', label: 'Food', amount: food, confidence: 'INFERRED' },
+    { category: 'LOCAL_EXPERIENCES', label: 'Local experiences', amount: localExperiences, confidence: 'INFERRED' },
+    { category: 'BUFFER', label: 'Buffer', amount: buffer, confidence: 'INFERRED' },
+  ];
 
   return {
     currency: 'INR',
@@ -268,16 +285,14 @@ export function transparentBudgetBreakdown(input: {
     transportPreference,
     totalAmount,
     perTravellerAmount: Math.ceil(totalAmount / travellers),
-    breakdown: [
-      { category: 'TRANSPORTATION', label: 'Transportation', amount: transportation, confidence: 'INFERRED' },
-      { category: 'ENTRY_TICKETS', label: 'Entry tickets', amount: entryTickets, confidence: entryTickets > 0 ? 'VERIFIED_OR_LIVE' : 'INFERRED' },
-      { category: 'FOOD', label: 'Food', amount: food, confidence: 'INFERRED' },
-      { category: 'LOCAL_EXPERIENCES', label: 'Local experiences', amount: localExperiences, confidence: 'INFERRED' },
-      { category: 'BUFFER', label: 'Buffer', amount: buffer, confidence: 'INFERRED' },
-    ],
+    breakdown,
     assumptions: [
       'Entry tickets use verified/live ticket_price facts saved in the itinerary snapshot.',
+      ...(input.hasSelectedHotel ? ['Accommodation uses the selected hotel offer/pricing saved in the trip snapshot; missing live prices stay INR 0.'] : []),
       'Food, transport, local experiences, and buffer are deterministic India travel estimates.',
+    ],
+    warnings: [
+      ...(input.hasSelectedHotel && accommodation === 0 ? ['Selected hotel has no saved live price yet; accommodation is shown as unavailable instead of estimated.'] : []),
     ],
   };
 }
@@ -397,6 +412,8 @@ router.get('/trips/:id/breakdown', requireAuth, async (req, res, next) => {
       stopCount,
       budgetBand: trip.user.preferences?.budgetBand,
       transportPreference: transportPreference ?? trip.user.preferences?.transportPreference,
+      accommodationAmount: accommodationAmountFromSelectedHotel(trip.itinerarySnapshot),
+      hasSelectedHotel: selectedHotelFromSnapshot(trip.itinerarySnapshot) !== null,
     });
 
     res.json({

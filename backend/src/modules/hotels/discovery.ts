@@ -35,6 +35,11 @@ export async function searchHotels(query: HotelSearchQuery) {
     query.radiusKm,
     query.limit,
     query.amenities?.toLowerCase() ?? '',
+    query.type ?? '',
+    query.wheelchairAccessible ?? '',
+    query.wifi ?? '',
+    query.parking ?? '',
+    query.sort ?? '',
     Boolean(env.GEOAPIFY_API_KEY.trim()),
   ].join(':');
 
@@ -47,6 +52,28 @@ export async function searchHotels(query: HotelSearchQuery) {
   hotelDiscoveryCache.set(cacheKey, payload);
 
   return { data: payload, meta: { ...query, center } };
+}
+
+export async function getHotelDetails(id: string, fetchImpl: FetchLike = fetch) {
+  const fetchedAt = new Date().toISOString();
+  const providerId = decodeHotelProviderId(id);
+  const hotel =
+    providerId.provider === 'GEOAPIFY'
+      ? await fetchGeoapifyHotelDetails(providerId.id, fetchedAt, fetchImpl)
+      : await fetchOverpassHotelDetails(providerId.osmType, providerId.osmId, fetchedAt, fetchImpl);
+
+  return {
+    data: {
+      hotel,
+      providerStatus: getHotelCapabilityStatus('DETAILS'),
+      freshness: {
+        cached: false,
+        fetchedAt,
+        cacheTtlSeconds: 0,
+      },
+    },
+    meta: { id },
+  };
 }
 
 async function resolveSearchCenter(query: HotelSearchQuery): Promise<SearchCenter> {
@@ -74,7 +101,7 @@ async function resolveSearchCenter(query: HotelSearchQuery): Promise<SearchCente
 
 export async function buildHotelDiscoveryPayload(
   center: SearchCenter,
-  query: Pick<HotelSearchQuery, 'radiusKm' | 'limit' | 'amenities'>,
+  query: Pick<HotelSearchQuery, 'radiusKm' | 'limit' | 'amenities' | 'type' | 'wheelchairAccessible' | 'wifi' | 'parking' | 'sort'>,
   fetchImpl: FetchLike = fetch,
 ) {
   const fetchedAt = new Date().toISOString();
@@ -102,9 +129,9 @@ export async function buildHotelDiscoveryPayload(
     }
   }
 
-  const hotels = filterByAmenities(
-    dedupeHotels(attempts.flatMap((attempt) => attempt.hotels)),
-    query.amenities,
+  const hotels = sortHotels(
+    filterHotels(dedupeHotels(attempts.flatMap((attempt) => attempt.hotels)), query),
+    query.sort,
   ).slice(0, query.limit);
   const unavailable: HotelUnavailableState | undefined = hotels.length === 0 ? hotelUnavailableState('DISCOVERY') : undefined;
 
@@ -125,13 +152,14 @@ export async function buildHotelDiscoveryPayload(
 
 async function fetchGeoapifyHotels(
   center: SearchCenter,
-  query: Pick<HotelSearchQuery, 'radiusKm' | 'limit'>,
+  query: Pick<HotelSearchQuery, 'radiusKm' | 'limit' | 'type'>,
   fetchedAt: string,
   fetchImpl: FetchLike,
 ): Promise<HotelDiscoveryItem[]> {
   const radiusMeters = Math.round(query.radiusKm * 1000);
+  const categories = query.type ? [`accommodation.${query.type}`] : ['accommodation.hotel', 'accommodation.guest_house', 'accommodation.hostel', 'accommodation.motel'];
   const url = new URL('https://api.geoapify.com/v2/places');
-  url.searchParams.set('categories', 'accommodation.hotel,accommodation.guest_house,accommodation.hostel,accommodation.motel');
+  url.searchParams.set('categories', categories.join(','));
   url.searchParams.set('filter', `circle:${center.longitude},${center.latitude},${radiusMeters}`);
   url.searchParams.set('bias', `proximity:${center.longitude},${center.latitude}`);
   url.searchParams.set('limit', String(query.limit));
@@ -148,14 +176,49 @@ async function fetchGeoapifyHotels(
     .filter((hotel): hotel is HotelDiscoveryItem => Boolean(hotel));
 }
 
+async function fetchGeoapifyHotelDetails(
+  placeId: string,
+  fetchedAt: string,
+  fetchImpl: FetchLike,
+): Promise<HotelDiscoveryItem> {
+  if (!env.GEOAPIFY_API_KEY.trim()) {
+    throw new AppError('Geoapify API key is required for this hotel detail lookup.', 503, 'HOTEL_DETAILS_NOT_CONFIGURED');
+  }
+
+  const url = new URL('https://api.geoapify.com/v2/place-details');
+  url.searchParams.set('id', placeId);
+  url.searchParams.set('features', 'details');
+  url.searchParams.set('apiKey', env.GEOAPIFY_API_KEY);
+
+  const response = await fetchImpl(url, { signal: AbortSignal.timeout(8_000) });
+  if (!response.ok) {
+    throw new AppError('Hotel details provider failed.', 502, 'HOTEL_DETAILS_PROVIDER_ERROR');
+  }
+
+  const data = await response.json() as { features?: unknown[] };
+  const detailsFeature = (data.features ?? []).find((feature) => {
+    const properties = asRecord(asRecord(feature).properties);
+    return properties.feature_type === 'details';
+  }) ?? data.features?.[0];
+  const hotel = normalizeGeoapifyHotel(detailsFeature, { latitude: 0, longitude: 0, label: 'details lookup' }, fetchedAt);
+  if (!hotel) {
+    throw new AppError('Hotel details not found.', 404, 'HOTEL_DETAILS_NOT_FOUND');
+  }
+
+  return {
+    ...hotel,
+    distanceKm: 0,
+  };
+}
+
 async function fetchOverpassHotels(
   center: SearchCenter,
-  query: Pick<HotelSearchQuery, 'radiusKm' | 'limit'>,
+  query: Pick<HotelSearchQuery, 'radiusKm' | 'limit' | 'type'>,
   fetchedAt: string,
   fetchImpl: FetchLike,
 ): Promise<HotelDiscoveryItem[]> {
   const radiusMeters = Math.round(query.radiusKm * 1000);
-  const hotelTypes = 'hotel|guest_house|hostel|motel|apartment';
+  const hotelTypes = query.type ?? 'hotel|guest_house|hostel|motel|apartment';
   const around = `(around:${radiusMeters},${center.latitude},${center.longitude})`;
   const overpassQuery = `[out:json][timeout:8];(node["tourism"~"^(${hotelTypes})$"]${around};way["tourism"~"^(${hotelTypes})$"]${around};relation["tourism"~"^(${hotelTypes})$"]${around};);out center ${query.limit};`;
 
@@ -179,13 +242,82 @@ async function fetchOverpassHotels(
     .filter((hotel): hotel is HotelDiscoveryItem => Boolean(hotel));
 }
 
+async function fetchOverpassHotelDetails(
+  osmType: 'node' | 'way' | 'relation',
+  osmId: string,
+  fetchedAt: string,
+  fetchImpl: FetchLike,
+): Promise<HotelDiscoveryItem> {
+  const overpassQuery = `[out:json][timeout:8];${osmType}(${osmId});out center 1;`;
+  const response = await fetchImpl('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'MargDarshak/1.0 hotel-details backend',
+    },
+    body: new URLSearchParams({ data: overpassQuery }),
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!response.ok) {
+    throw new AppError('Hotel details provider failed.', 502, 'HOTEL_DETAILS_PROVIDER_ERROR');
+  }
+
+  const data = await response.json() as { elements?: unknown[] };
+  const hotel = normalizeOverpassHotel(data.elements?.[0], { latitude: 0, longitude: 0, label: 'details lookup' }, fetchedAt);
+  if (!hotel) {
+    throw new AppError('Hotel details not found.', 404, 'HOTEL_DETAILS_NOT_FOUND');
+  }
+
+  return {
+    ...hotel,
+    distanceKm: 0,
+  };
+}
+
+type DecodedHotelProviderId =
+  | { provider: 'GEOAPIFY'; id: string }
+  | { provider: 'OPENSTREETMAP'; osmType: 'node' | 'way' | 'relation'; osmId: string };
+
+export function decodeHotelProviderId(id: string): DecodedHotelProviderId {
+  if (id.startsWith('geoapify:')) {
+    const placeId = id.slice('geoapify:'.length);
+    if (placeId) return { provider: 'GEOAPIFY', id: placeId };
+  }
+
+  if (id.startsWith('osm:')) {
+    const [osmType, osmId] = id.slice('osm:'.length).split('/');
+    if (
+      (osmType === 'node' || osmType === 'way' || osmType === 'relation') &&
+      /^\d+$/.test(osmId ?? '')
+    ) {
+      return { provider: 'OPENSTREETMAP', osmType, osmId };
+    }
+  }
+
+  throw new AppError('Unsupported hotel id. Use a provider-backed id returned by hotel search.', 400, 'INVALID_HOTEL_ID');
+}
+
+export function buildHotelDetailsUnavailableResponse(id: string) {
+  const unavailable = hotelUnavailableState('DETAILS');
+
+  return {
+    error: {
+      code: unavailable.code,
+      message: unavailable.message,
+    },
+    providerStatus: getHotelCapabilityStatus('DETAILS'),
+    meta: { id },
+  };
+}
+
 export function normalizeGeoapifyHotel(feature: unknown, center: SearchCenter, fetchedAt: string): HotelDiscoveryItem | null {
   const record = asRecord(feature);
   const properties = asRecord(record.properties);
   const geometry = asRecord(record.geometry);
   const coordinates = Array.isArray(geometry.coordinates) ? geometry.coordinates : [];
-  const longitude = numberOrNull(coordinates[0]);
-  const latitude = numberOrNull(coordinates[1]);
+  const longitude = numberOrNull(coordinates[0]) ?? numberOrNull(properties.lon);
+  const latitude = numberOrNull(coordinates[1]) ?? numberOrNull(properties.lat);
   const name = stringOrNull(properties.name);
 
   if (!name || latitude === null || longitude === null) return null;
@@ -203,7 +335,7 @@ export function normalizeGeoapifyHotel(feature: unknown, center: SearchCenter, f
 
   return baseHotel({
     id: `geoapify:${providerHotelId}`,
-    provider: 'GEOAPIFY',
+  provider: 'GEOAPIFY',
     providerHotelId,
     name,
     latitude,
@@ -212,8 +344,8 @@ export function normalizeGeoapifyHotel(feature: unknown, center: SearchCenter, f
     address: stringOrNull(properties.formatted) ?? stringOrNull(properties.address_line2),
     categories,
     raw,
-    phone: stringOrNull(properties.phone) ?? stringOrNull(raw.phone) ?? stringOrNull(raw['contact:phone']),
-    website: stringOrNull(properties.website) ?? stringOrNull(raw.website) ?? stringOrNull(raw['contact:website']),
+    phone: stringOrNull(asRecord(properties.contact).phone) ?? stringOrNull(properties.phone) ?? stringOrNull(raw.phone) ?? stringOrNull(raw['contact:phone']),
+    website: stringOrNull(asRecord(properties.contact).website) ?? stringOrNull(properties.website) ?? stringOrNull(raw.website) ?? stringOrNull(raw['contact:website']),
     source,
     confidence: 0.82,
   });
@@ -259,7 +391,7 @@ export function normalizeOverpassHotel(element: unknown, center: SearchCenter, f
 
 function baseHotel(input: {
   id: string;
-  provider: 'GEOAPIFY' | 'OPENSTREETMAP';
+  provider: 'GEOAPIFY' | 'OPENSTREETMAP' | 'STAYING';
   providerHotelId: string;
   name: string;
   latitude: number;
@@ -273,6 +405,22 @@ function baseHotel(input: {
   source: HotelSourceAttribution;
   confidence: number;
 }): HotelDiscoveryItem {
+  const amenities = inferAmenities(input.raw);
+  const starRating = numberOrNull(input.raw.stars) ?? numberOrNull(input.raw.star_rating);
+  const wheelchairAccessible = boolFromTag(input.raw.wheelchair);
+  const trustSummary = buildHotelTrustSummary({
+    provider: input.provider,
+    baseConfidence: input.confidence,
+    fetchedAt: input.source.fetchedAt,
+    address: input.address,
+    categories: input.categories,
+    amenities,
+    phone: input.phone,
+    website: input.website,
+    starRating,
+    wheelchairAccessible,
+  });
+
   return {
     id: input.id,
     provider: input.provider,
@@ -283,11 +431,11 @@ function baseHotel(input: {
     distanceKm: round(distanceKm(input.center.latitude, input.center.longitude, input.latitude, input.longitude), 2),
     address: input.address,
     categories: input.categories,
-    amenities: inferAmenities(input.raw),
+    amenities,
     phone: input.phone,
     website: input.website,
-    starRating: numberOrNull(input.raw.stars),
-    wheelchairAccessible: boolFromTag(input.raw.wheelchair),
+    starRating,
+    wheelchairAccessible,
     source: input.source,
     pricing: {
       available: false,
@@ -295,10 +443,67 @@ function baseHotel(input: {
     },
     trust: {
       status: 'SOURCE_BACKED',
-      confidence: input.confidence,
-      warnings: ['Availability and price are not verified by discovery data.'],
+      confidence: trustSummary.score,
+      warnings: hotelTrustWarnings(trustSummary),
+      summary: trustSummary,
     },
   };
+}
+
+function buildHotelTrustSummary(input: {
+  provider: 'GEOAPIFY' | 'OPENSTREETMAP' | 'STAYING';
+  baseConfidence: number;
+  fetchedAt: string;
+  address: string | null;
+  categories: string[];
+  amenities: string[];
+  phone: string | null;
+  website: string | null;
+  starRating: number | null;
+  wheelchairAccessible: boolean | null;
+}): HotelDiscoveryItem['trust']['summary'] {
+  const fields = [
+    ['address', Boolean(input.address)],
+    ['categories', input.categories.length > 0],
+    ['amenities', input.amenities.length > 0],
+    ['phone', Boolean(input.phone)],
+    ['website', Boolean(input.website)],
+    ['starRating', input.starRating !== null],
+    ['wheelchairAccessible', input.wheelchairAccessible !== null],
+  ] as const;
+  const presentCount = fields.filter(([, present]) => present).length;
+  const fieldCompleteness = round(presentCount / fields.length, 2);
+  const freshness = hotelDataFreshness(input.fetchedAt);
+  const score = round((input.baseConfidence * 0.55) + (fieldCompleteness * 0.3) + (freshness.score * 0.15), 2);
+
+  return {
+    label: score >= 0.8 ? 'HIGH' : score >= 0.65 ? 'MEDIUM' : 'LOW',
+    score,
+    sourceTier: input.provider === 'OPENSTREETMAP' ? 'OPENSTREETMAP_COMMUNITY' : 'PROVIDER_PLACE_DATA',
+    fieldCompleteness,
+    freshness,
+    evidenceCount: presentCount + 1,
+    missingFields: fields.filter(([, present]) => !present).map(([field]) => field),
+  };
+}
+
+function hotelDataFreshness(fetchedAt: string): HotelDiscoveryItem['trust']['summary']['freshness'] {
+  const timestamp = Date.parse(fetchedAt);
+  if (!Number.isFinite(timestamp)) {
+    return { status: 'UNKNOWN', score: 0.4, fetchedAt };
+  }
+
+  const ageHours = Math.max(0, (Date.now() - timestamp) / 3_600_000);
+  if (ageHours <= 24) return { status: 'FRESH', score: 1, fetchedAt };
+  if (ageHours <= 168) return { status: 'RECENT', score: 0.85, fetchedAt };
+  return { status: 'STALE', score: 0.55, fetchedAt };
+}
+
+function hotelTrustWarnings(summary: HotelDiscoveryItem['trust']['summary']): string[] {
+  const warnings = ['Availability and price are not verified by discovery data.'];
+  if (summary.fieldCompleteness < 0.5) warnings.push('Hotel profile has limited source fields.');
+  if (summary.freshness.status === 'STALE' || summary.freshness.status === 'UNKNOWN') warnings.push('Hotel source data freshness is uncertain.');
+  return warnings;
 }
 
 export function dedupeHotels(hotels: HotelDiscoveryItem[]): HotelDiscoveryItem[] {
@@ -315,18 +520,74 @@ export function dedupeHotels(hotels: HotelDiscoveryItem[]): HotelDiscoveryItem[]
   return deduped;
 }
 
-function filterByAmenities(hotels: HotelDiscoveryItem[], amenities?: string): HotelDiscoveryItem[] {
-  const requested = (amenities ?? '')
+function filterHotels(
+  hotels: HotelDiscoveryItem[],
+  query: Pick<HotelSearchQuery, 'amenities' | 'type' | 'wheelchairAccessible' | 'wifi' | 'parking'>,
+): HotelDiscoveryItem[] {
+  const requestedAmenities = (query.amenities ?? '')
     .split(',')
     .map((amenity) => normalizeName(amenity))
     .filter(Boolean);
 
-  if (requested.length === 0) return hotels;
+  const requested = [
+    ...requestedAmenities,
+    ...(query.wifi ? ['wifi'] : []),
+    ...(query.parking ? ['parking'] : []),
+  ];
+  const requestedType = query.type ? normalizeName(query.type) : null;
 
   return hotels.filter((hotel) => {
     const available = hotel.amenities.map((amenity) => normalizeName(amenity));
+    if (requestedType && !hotel.categories.some((category) => normalizeName(category).includes(requestedType))) return false;
+    if (query.wheelchairAccessible === true && hotel.wheelchairAccessible !== true) return false;
     return requested.every((amenity) => available.includes(amenity));
   });
+}
+
+function sortHotels(hotels: HotelDiscoveryItem[], sort: HotelSearchQuery['sort']): HotelDiscoveryItem[] {
+  return [...hotels].sort((a, b) => {
+    if (sort === 'TRUST') return b.trust.confidence - a.trust.confidence || a.distanceKm - b.distanceKm;
+    if (sort === 'RECOMMENDED') return hotelRecommendationScore(b) - hotelRecommendationScore(a);
+    return a.distanceKm - b.distanceKm;
+  });
+}
+
+function hotelRecommendationScore(hotel: HotelDiscoveryItem): number {
+  return hotel.trust.confidence - Math.min(hotel.distanceKm, 20) / 100;
+}
+
+export function rankHotelsForTrip(
+  hotels: HotelDiscoveryItem[],
+  stops: Array<{ latitude: number | null; longitude: number | null; name?: string | null }>,
+  options: { accessibilityWheelchair?: boolean | null; budgetBand?: string | null } = {},
+): HotelDiscoveryItem[] {
+  const validStops = stops.filter((stop) => typeof stop.latitude === 'number' && typeof stop.longitude === 'number');
+  return hotels
+    .map((hotel) => {
+      const distances = validStops.map((stop) => distanceKm(hotel.latitude, hotel.longitude, stop.latitude!, stop.longitude!));
+      const nearestStopDistanceKm = distances.length ? Math.min(...distances) : null;
+      const averageDistanceKm = distances.length ? distances.reduce((sum, value) => sum + value, 0) / distances.length : null;
+      const distanceScore = averageDistanceKm === null ? 0.6 : Math.max(0, 1 - Math.min(averageDistanceKm, 20) / 20);
+      const accessibilityScore = options.accessibilityWheelchair ? (hotel.wheelchairAccessible === true ? 1 : 0.2) : 0.8;
+      const trustScore = hotel.trust.confidence;
+      const score = round((distanceScore * 0.45) + (trustScore * 0.4) + (accessibilityScore * 0.15), 2);
+
+      return {
+        ...hotel,
+        tripFit: {
+          score,
+          averageDistanceKm: averageDistanceKm === null ? null : round(averageDistanceKm, 2),
+          nearestStopDistanceKm: nearestStopDistanceKm === null ? null : round(nearestStopDistanceKm, 2),
+          reasons: [
+            ...(averageDistanceKm !== null ? [`Average ${round(averageDistanceKm, 1)} km from planned stops`] : []),
+            ...(hotel.wheelchairAccessible === true ? ['Wheelchair access source-backed'] : []),
+            `${hotel.trust.summary.label.toLowerCase()} hotel data trust`,
+            ...(options.budgetBand ? [`Budget context: ${options.budgetBand}`] : []),
+          ],
+        },
+      };
+    })
+    .sort((a, b) => (b.tripFit?.score ?? 0) - (a.tripFit?.score ?? 0));
 }
 
 function sourceMix(hotels: HotelDiscoveryItem[]) {

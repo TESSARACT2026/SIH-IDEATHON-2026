@@ -366,7 +366,17 @@ export const openApiDocument = {
         type: 'object',
         additionalProperties: false,
         properties: {
-          provider: { type: 'string', enum: ['Geoapify', 'Amadeus', 'Booking.com Demand API'] },
+          provider: {
+            type: 'string',
+            enum: [
+              'Geoapify Places',
+              'OpenStreetMap/Overpass',
+              'Geoapify Place Details',
+              'OpenStreetMap/Overpass Details',
+              'Staying API',
+              'Booking.com Demand API',
+            ],
+          },
           capabilities: { type: 'array', items: { type: 'string', enum: ['DISCOVERY', 'DETAILS', 'OFFERS'] } },
           configured: { type: 'boolean' },
           implemented: { type: 'boolean' },
@@ -381,7 +391,10 @@ export const openApiDocument = {
         properties: {
           code: { type: 'string' },
           message: { type: 'string' },
-          action: { type: 'string', enum: ['CONFIGURE_PROVIDER_KEY', 'WAIT_FOR_PROVIDER_IMPLEMENTATION', 'REQUEST_PARTNER_ACCESS'] },
+          action: {
+            type: 'string',
+            enum: ['CONFIGURE_PROVIDER_KEY', 'WAIT_FOR_PROVIDER_IMPLEMENTATION', 'REQUEST_PARTNER_ACCESS', 'RETRY_LATER'],
+          },
         },
       },
     },
@@ -564,6 +577,7 @@ export const openApiDocument = {
       get: {
         tags: ['Live Data'],
         summary: 'Distance and duration',
+        description: 'Returns distance, duration, route geometry, and source. Falls back to straight-line geometry when routing provider data is unavailable.',
         parameters: [
           { name: 'startLat', in: 'query', required: true, schema: { type: 'number', minimum: -90, maximum: 90 } },
           { name: 'startLon', in: 'query', required: true, schema: { type: 'number', minimum: -180, maximum: 180 } },
@@ -773,6 +787,53 @@ export const openApiDocument = {
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } },
       },
     },
+    '/api/v1/trips/{id}/hotel': {
+      get: {
+        security: bearerSecurity,
+        tags: ['Trips'],
+        summary: 'Get selected trip hotel snapshot',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+      put: {
+        security: bearerSecurity,
+        tags: ['Trips'],
+        summary: 'Save or replace selected trip hotel snapshot',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['hotel'],
+                properties: {
+                  hotel: { type: 'object', additionalProperties: true },
+                  offer: { type: 'object', additionalProperties: true },
+                },
+              },
+            },
+          },
+        },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+      delete: {
+        security: bearerSecurity,
+        tags: ['Trips'],
+        summary: 'Remove selected trip hotel snapshot',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
+    '/api/v1/trips/{id}/hotels/recommendations': {
+      get: {
+        security: bearerSecurity,
+        tags: ['Trips'],
+        summary: 'Recommend hotels ranked by itinerary fit',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '401': { $ref: '#/components/responses/Unauthorized' }, '404': { $ref: '#/components/responses/NotFound' } },
+      },
+    },
     '/api/v1/trips/{id}/itinerary/replan': {
       post: {
         security: bearerSecurity,
@@ -916,6 +977,11 @@ export const openApiDocument = {
           { name: 'rooms', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 5, default: 1 } },
           { name: 'priceBand', in: 'query', schema: { type: 'string', enum: ['BUDGET', 'MODERATE', 'PREMIUM'] } },
           { name: 'amenities', in: 'query', schema: { type: 'string', maxLength: 200 }, description: 'Comma-separated desired amenities.' },
+          { name: 'type', in: 'query', schema: { type: 'string', enum: ['hotel', 'guest_house', 'hostel', 'motel', 'apartment'] } },
+          { name: 'wheelchairAccessible', in: 'query', schema: { type: 'boolean' } },
+          { name: 'wifi', in: 'query', schema: { type: 'boolean' } },
+          { name: 'parking', in: 'query', schema: { type: 'boolean' } },
+          { name: 'sort', in: 'query', schema: { type: 'string', enum: ['DISTANCE', 'TRUST', 'RECOMMENDED'], default: 'DISTANCE' } },
           { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 } },
         ],
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
@@ -925,28 +991,42 @@ export const openApiDocument = {
       get: {
         tags: ['Hotels'],
         summary: 'Fetch trusted hotel offers once providers are configured',
-        description: 'Phase 0 contract endpoint. Returns an empty list with unavailable metadata until a real offer provider adapter is implemented.',
+        description: 'Returns an empty list with unavailable metadata until the Staying API offer adapter is implemented. Never fabricates prices.',
         security: [],
         parameters: [
           { name: 'hotelId', in: 'query', required: true, schema: { type: 'string', minLength: 1, maxLength: 150 } },
           { name: 'providerHotelId', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 200 } },
+          { name: 'platform', in: 'query', schema: { type: 'string', enum: ['airbnb', 'booking', 'vrbo', 'expedia', 'hotels', 'google', 'tripadvisor'] } },
+          { name: 'name', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 200 } },
+          { name: 'location', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 200 } },
+          { name: 'googleHotelId', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 200 } },
           { name: 'checkIn', in: 'query', required: true, schema: { type: 'string', format: 'date' } },
           { name: 'checkOut', in: 'query', required: true, schema: { type: 'string', format: 'date' } },
           { name: 'adults', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 10, default: 2 } },
           { name: 'rooms', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 5, default: 1 } },
           { name: 'currency', in: 'query', schema: { type: 'string', minLength: 3, maxLength: 3, default: 'INR' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 10, default: 5 } },
         ],
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
+      },
+    },
+    '/api/v1/hotels/booking-link': {
+      get: {
+        tags: ['Hotels'],
+        summary: 'Validate a safe external hotel booking link',
+        security: [],
+        parameters: [{ name: 'url', in: 'query', required: true, schema: { type: 'string', format: 'uri' } }],
         responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' } },
       },
     },
     '/api/v1/hotels/{id}': {
       get: {
         tags: ['Hotels'],
-        summary: 'Get trusted hotel details once providers are configured',
-        description: 'Phase 0 contract endpoint. Returns a provider-unavailable error until a real details provider adapter is implemented.',
+        summary: 'Get trusted hotel details by provider-backed hotel id',
+        description: 'Accepts geoapify:<place_id> and osm:node/<id>, osm:way/<id>, or osm:relation/<id>. Details remain source-backed and never prove live room price or availability.',
         security: [],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1, maxLength: 150 } }],
-        responses: { '503': { $ref: '#/components/responses/ServiceUnavailable' }, '400': { $ref: '#/components/responses/BadRequest' } },
+        responses: { '200': { $ref: '#/components/responses/Ok' }, '400': { $ref: '#/components/responses/BadRequest' }, '404': { $ref: '#/components/responses/NotFound' }, '502': { $ref: '#/components/responses/ServiceUnavailable' }, '503': { $ref: '#/components/responses/ServiceUnavailable' } },
       },
     },
     '/api/v1/scoring/trip-health/{id}': {

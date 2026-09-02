@@ -6,37 +6,15 @@ import {
   hotelUnavailableState,
 } from './provider-status.js';
 import {
+  bookingLinkQuerySchema,
   hotelDetailsParamsSchema,
   hotelOffersQuerySchema,
   hotelSearchQuerySchema,
 } from './schemas.js';
-import { searchHotels } from './discovery.js';
+import { getHotelDetails, searchHotels } from './discovery.js';
+import { buildHotelOffersResponse, getHotelOffers, safeBookingLink } from './staying.js';
 
 const router = Router();
-
-export function buildHotelOffersResponse(meta: unknown) {
-  return {
-    data: {
-      offers: [],
-      unavailable: hotelUnavailableState('OFFERS'),
-      providerStatus: getHotelCapabilityStatus('OFFERS'),
-    },
-    meta,
-  };
-}
-
-export function buildHotelDetailsUnavailableResponse(meta: unknown) {
-  const unavailable = hotelUnavailableState('DETAILS');
-
-  return {
-    error: {
-      code: unavailable.code,
-      message: unavailable.message,
-    },
-    providerStatus: getHotelCapabilityStatus('DETAILS'),
-    meta,
-  };
-}
 
 router.get('/providers', (_req, res) => {
   res.json({
@@ -59,13 +37,27 @@ router.get('/search', validate(hotelSearchQuerySchema, 'query'), async (req, res
   }
 });
 
-router.get('/offers', validate(hotelOffersQuerySchema, 'query'), (req, res) => {
-  res.json(buildHotelOffersResponse(req.query));
+router.get('/offers', validate(hotelOffersQuerySchema, 'query'), async (req, res, next) => {
+  try {
+    res.json(await getHotelOffers(req.query as unknown as Parameters<typeof getHotelOffers>[0]));
+  } catch (err) {
+    next(err);
+  }
 });
 
-router.get('/:id', validate(hotelDetailsParamsSchema, 'params'), (req, res) => {
-  res.status(503).json(buildHotelDetailsUnavailableResponse(req.params));
+router.get('/booking-link', validate(bookingLinkQuerySchema, 'query'), (req, res) => {
+  const { url } = req.query as unknown as { url: string };
+  res.json({ data: safeBookingLink(url) });
+});
+
+router.get('/:id', validate(hotelDetailsParamsSchema, 'params'), async (req, res, next) => {
+  try {
+    const { id } = req.params as unknown as { id: string };
+    res.json(await getHotelDetails(id));
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;
-export { getHotelCapabilityStatus, getHotelProviderStatuses, hotelUnavailableState };
+export { buildHotelOffersResponse, getHotelCapabilityStatus, getHotelOffers, getHotelProviderStatuses, hotelUnavailableState, safeBookingLink };

@@ -25,8 +25,24 @@ const snapshot = {
         ],
       },
     },
+    {
+      dayNumber: 1,
+      sequence: 2,
+      entityId: 'attr-2',
+      attractionName: 'Temple',
+      startTime: '11:30',
+      endTime: '12:30',
+      travelBufferMinutesBefore: 20,
+    },
   ],
-  excluded: [{ entityId: 'attr-2', attractionName: 'Fort', reason: 'Too far today' }],
+  selectedHotel: {
+    id: 'staying:booking:hotel-123',
+    provider: 'STAYING',
+    name: 'Hotel Utkal',
+    latitude: 20.15,
+    longitude: 85.82,
+  },
+  excluded: [{ entityId: 'attr-3', attractionName: 'Fort', reason: 'Too far today' }],
 };
 
 describe('offline pack helpers', () => {
@@ -86,11 +102,36 @@ describe('offline pack helpers', () => {
             accessibilityHearing: false,
             accessibilityNotes: null,
           },
+        }, {
+          dayNumber: 1,
+          sequence: 2,
+          startTime: '11:30',
+          endTime: '12:30',
+          entityId: 'attr-2',
+          travelBufferMinutesBefore: 20,
+          attraction: {
+            id: 'attr-2',
+            name: 'Temple',
+            categories: ['Temple'],
+            latitude: 20.2,
+            longitude: 85.9,
+            address: 'Temple Road',
+            accessibilityWheelchair: false,
+            accessibilityVisual: false,
+            accessibilityHearing: false,
+            accessibilityNotes: null,
+          },
         }],
       }],
     });
 
     expect(pack.itinerary[0].attraction.latitude).toBe(20.1);
+    expect(pack.selectedHotel?.name).toBe('Hotel Utkal');
+    expect(pack.mapHints.selectedHotel?.id).toBe('staying:booking:hotel-123');
+    expect(pack.mapHints.routeSegments[0]).toMatchObject({
+      source: 'FALLBACK_STRAIGHT_LINE',
+      geometry: { type: 'LineString' },
+    });
     expect(pack.savedContacts).toEqual([{ category: 'personal', label: 'Home', phone: '+911234567890' }]);
     expect(pack.emergency.contacts.length).toBeGreaterThan(1);
     expect(pack.alternatives[0]).toMatchObject({ attractionName: 'Fort', reason: 'Too far today' });

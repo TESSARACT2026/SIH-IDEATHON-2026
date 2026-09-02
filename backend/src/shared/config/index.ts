@@ -26,8 +26,8 @@ const envSchema = z.object({
 
   // Hotels (optional until hotel provider phases are wired)
   GEOAPIFY_API_KEY: z.string().default(''),
-  AMADEUS_CLIENT_ID: z.string().default(''),
-  AMADEUS_CLIENT_SECRET: z.string().default(''),
+  STAYING_API_KEY: z.string().default(process.env.STAYINGAPI_KEY ?? ''),
+  STAYING_API_BASE_URL: z.string().url().default('https://api.stayingapi.com/v1'),
   BOOKING_DEMAND_API_KEY: z.string().default(''),
   BOOKING_DEMAND_AFFILIATE_ID: z.string().default(''),
 

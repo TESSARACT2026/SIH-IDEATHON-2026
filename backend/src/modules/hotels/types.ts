@@ -36,9 +36,36 @@ export interface HotelSourceAttribution {
   fetchedAt: string;
 }
 
+export interface HotelOffer {
+  id: string;
+  provider: 'STAYING';
+  platform: string | null;
+  providerHotelId: string | null;
+  hotelName: string | null;
+  roomName: string | null;
+  currency: string;
+  nightlyAmount: number | null;
+  totalAmount: number | null;
+  taxesAndFeesAmount: number | null;
+  nights: number;
+  rooms: number;
+  adults: number;
+  bookingUrl: string | null;
+  refundable: boolean | null;
+  source: HotelSourceAttribution;
+  confidence: 'LIVE_PROVIDER' | 'PARTIAL_PROVIDER';
+}
+
+export interface HotelTripFit {
+  score: number;
+  averageDistanceKm: number | null;
+  nearestStopDistanceKm: number | null;
+  reasons: string[];
+}
+
 export interface HotelDiscoveryItem {
   id: string;
-  provider: 'GEOAPIFY' | 'OPENSTREETMAP';
+  provider: 'GEOAPIFY' | 'OPENSTREETMAP' | 'STAYING';
   providerHotelId: string;
   name: string;
   latitude: number;
@@ -60,5 +87,19 @@ export interface HotelDiscoveryItem {
     status: 'SOURCE_BACKED';
     confidence: number;
     warnings: string[];
+    summary: {
+      label: 'HIGH' | 'MEDIUM' | 'LOW';
+      score: number;
+      sourceTier: 'PROVIDER_PLACE_DATA' | 'OPENSTREETMAP_COMMUNITY';
+      fieldCompleteness: number;
+      freshness: {
+        status: 'FRESH' | 'RECENT' | 'STALE' | 'UNKNOWN';
+        score: number;
+        fetchedAt: string;
+      };
+      evidenceCount: number;
+      missingFields: string[];
+    };
   };
+  tripFit?: HotelTripFit;
 }
