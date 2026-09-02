@@ -141,17 +141,17 @@ function PriceCard({ estimate, isRecommended }: { estimate: PlatformEstimate; is
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col gap-3 mb-4">
         <div className="flex items-center gap-3">
-          <div className={`w-12 h-12 rounded-xl ${estimate.bgColor} flex items-center justify-center text-2xl font-black ${estimate.color} shadow-sm border border-white/50`}>
+          <div className={`w-12 h-12 shrink-0 rounded-xl ${estimate.bgColor} flex items-center justify-center text-2xl font-black ${estimate.color} shadow-sm border border-white/50`}>
             {estimate.logo}
           </div>
-          <div>
-            <p className="font-black text-gray-900 text-base">{estimate.provider}</p>
-            <p className="text-xs font-bold text-green-600">{estimate.cashback}</p>
+          <div className="min-w-0">
+            <p className="font-black text-gray-900 text-base truncate">{estimate.provider}</p>
+            <p className="text-xs font-bold text-green-600 truncate">{estimate.cashback}</p>
           </div>
         </div>
-        <div className="text-right">
+        <div className="mt-1 pt-3 border-t border-gray-100">
           <p className="text-2xl font-black text-gray-900">₹{estimate.estimatedPrice}</p>
           <p className="text-xs text-gray-400">per night / incl. taxes</p>
         </div>
