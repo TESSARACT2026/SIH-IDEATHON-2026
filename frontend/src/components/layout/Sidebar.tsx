@@ -16,6 +16,7 @@ import {
   X,
   Car,
   Building2,
+  TrainFront,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ShinyText from '../ui/ShinyText';
@@ -55,6 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => 
     { path: '/nearby', label: 'Nearby Places', icon: <MapPinOff size={18} /> },
     { path: '/cabs', label: 'Pre-Book Cabs', icon: <Car size={18} /> },
     { path: '/hotels', label: 'Book Hotels', icon: <Building2 size={18} /> },
+    { path: '/trains', label: 'Book Trains', icon: <TrainFront size={18} /> },
     { path: '/accessibility', label: 'Accessibility', icon: <Accessibility size={18} /> },
     { path: '/travel-guide', label: 'Travel Guide', icon: <BookOpen size={18} /> },
     { path: '/emergency', label: 'Emergency', icon: <AlertCircle size={18} /> },
