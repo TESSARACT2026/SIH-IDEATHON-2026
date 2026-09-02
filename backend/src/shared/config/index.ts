@@ -24,6 +24,13 @@ const envSchema = z.object({
   // Routing
   ROUTING_API_KEY: z.string().min(1).default('mock-routing-api-key-dev'),
 
+  // Hotels (optional until hotel provider phases are wired)
+  GEOAPIFY_API_KEY: z.string().default(''),
+  AMADEUS_CLIENT_ID: z.string().default(''),
+  AMADEUS_CLIENT_SECRET: z.string().default(''),
+  BOOKING_DEMAND_API_KEY: z.string().default(''),
+  BOOKING_DEMAND_AFFILIATE_ID: z.string().default(''),
+
   // Auth
   JWT_SECRET: z.string().min(16),
   ACCESS_TOKEN_EXPIRY: z.string().default('15m'),
