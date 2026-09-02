@@ -330,6 +330,7 @@ export const PreBookedCabsPage: React.FC = () => {
   const [distance, setDistance] = useState<number | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   // Short destinations state
+  const [shortCabType, setShortCabType] = useState<'mini' | 'sedan' | 'suv' | 'bike'>('mini');
   const [shortCity, setShortCity] = useState<string>('');
   const [userCoords, setUserCoords] = useState<[number, number] | null>(null);
   const [shortLocating, setShortLocating] = useState(false);
@@ -361,19 +362,19 @@ export const PreBookedCabsPage: React.FC = () => {
     );
   }
 
-  function buildEstimates(dist: number, dt: Date): CabEstimate[] {
-    const fares = estimateFare(dist, cabType, dt);
+  function buildEstimates(dist: number, dt: Date, type: 'mini' | 'sedan' | 'suv' | 'bike' = cabType): CabEstimate[] {
+    const fares = estimateFare(dist, type, dt);
     return [
       {
         provider: 'Ola',
         logo: '🟢',
         color: 'text-green-700',
         bgColor: 'bg-green-100',
-        category: cabType === 'bike' ? 'Ola Bike' : cabType === 'suv' ? 'Ola Prime SUV' : cabType === 'sedan' ? 'Ola Prime Sedan' : 'Ola Mini',
+        category: type === 'bike' ? 'Ola Bike' : type === 'suv' ? 'Ola Prime SUV' : type === 'sedan' ? 'Ola Prime Sedan' : 'Ola Mini',
         estimatedFare: fares.ola,
         eta: Math.round(5 + dist * 2.5),
         rating: 4.3,
-        features: ['AC', 'GPS Tracked', 'Pre-book', ...(cabType !== 'bike' ? ['4 Seats'] : ['2 Wheeler'])],
+        features: ['AC', 'GPS Tracked', 'Pre-book', ...(type !== 'bike' ? ['4 Seats'] : ['2 Wheeler'])],
         bookingUrl: 'https://www.olacabs.com',
       },
       {
@@ -381,11 +382,11 @@ export const PreBookedCabsPage: React.FC = () => {
         logo: '⚫',
         color: 'text-gray-800',
         bgColor: 'bg-gray-100',
-        category: cabType === 'bike' ? 'Uber Moto' : cabType === 'suv' ? 'Uber XL' : cabType === 'sedan' ? 'Uber Go Sedan' : 'Uber Go',
+        category: type === 'bike' ? 'Uber Moto' : type === 'suv' ? 'Uber XL' : type === 'sedan' ? 'Uber Go Sedan' : 'Uber Go',
         estimatedFare: fares.uber,
         eta: Math.round(4 + dist * 2.2),
         rating: 4.5,
-        features: ['AC', 'Live Tracking', 'Schedule Ride', ...(cabType !== 'bike' ? ['In-app Payment'] : ['Helmet Provided'])],
+        features: ['AC', 'Live Tracking', 'Schedule Ride', ...(type !== 'bike' ? ['In-app Payment'] : ['Helmet Provided'])],
         bookingUrl: 'https://www.uber.com',
       },
       {
@@ -393,11 +394,11 @@ export const PreBookedCabsPage: React.FC = () => {
         logo: '🟡',
         color: 'text-yellow-700',
         bgColor: 'bg-yellow-100',
-        category: cabType === 'bike' ? 'Rapido Bike' : cabType === 'suv' ? 'Rapido SUV' : cabType === 'sedan' ? 'Rapido Sedan' : 'Rapido Auto',
+        category: type === 'bike' ? 'Rapido Bike' : type === 'suv' ? 'Rapido SUV' : type === 'sedan' ? 'Rapido Sedan' : 'Rapido Auto',
         estimatedFare: fares.rapido,
         eta: Math.round(3 + dist * 2.0),
         rating: 4.1,
-        features: ['Budget Friendly', 'Fast Pickup', 'Pre-book', ...(cabType !== 'bike' ? ['Auto/Cab'] : ['Helmet Included'])],
+        features: ['Budget Friendly', 'Fast Pickup', 'Pre-book', ...(type !== 'bike' ? ['Auto/Cab'] : ['Helmet Included'])],
         bookingUrl: 'https://www.rapido.bike',
       },
     ];
@@ -654,10 +655,32 @@ export const PreBookedCabsPage: React.FC = () => {
               </button>
             </div>
             {userCoords && shortCity && (
-              <p className="mt-2 text-xs text-blue-600 font-medium">
+              <p className="mt-2 mb-4 text-xs text-blue-600 font-medium">
                 📍 Located near <strong>{shortCity}</strong> · showing stops sorted by distance from you
               </p>
             )}
+
+            {/* Short Cab Type Selector */}
+            <div className="mt-5">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Cab Type</label>
+              <div className="grid grid-cols-4 gap-2">
+                {cabTypes.map(ct => (
+                  <button
+                    key={ct.key}
+                    type="button"
+                    onClick={() => setShortCabType(ct.key)}
+                    className={`py-2.5 rounded-xl text-sm font-bold transition-all flex flex-col items-center gap-1 ${
+                      shortCabType === ct.key
+                        ? 'bg-blue-500 text-white shadow-md scale-105'
+                        : 'bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 border border-gray-200'
+                    }`}
+                  >
+                    <span className="text-xl">{ct.icon}</span>
+                    {ct.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Stop cards */}
@@ -689,7 +712,7 @@ export const PreBookedCabsPage: React.FC = () => {
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {stops.map(stop => {
-                    const fare = estimateFare(stop.distKm, 'mini', new Date());
+                    const fare = estimateFare(stop.distKm, shortCabType, new Date());
                     const isSelected = selectedStop?.name === stop.name;
                     return (
                       <button
@@ -728,7 +751,7 @@ export const PreBookedCabsPage: React.FC = () => {
                 {selectedStop && (() => {
                   const d = selectedStop.distKm ?? 1;
                   const dt = new Date();
-                  const stopEstimates = buildEstimates(d, dt);
+                  const stopEstimates = buildEstimates(d, dt, shortCabType);
                   const stopCheapest = stopEstimates.length > 0
                     ? stopEstimates.reduce((a, b) => a.estimatedFare < b.estimatedFare ? a : b)
                     : null;
@@ -751,7 +774,7 @@ export const PreBookedCabsPage: React.FC = () => {
                             <Calendar size={13} /> {dt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
                           </div>
                           <div className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 border border-orange-100 rounded-lg text-xs font-semibold text-orange-700">
-                            {cabTypes.find(c => c.key === cabType)?.icon} {cabTypes.find(c => c.key === cabType)?.label}
+                            {cabTypes.find(c => c.key === shortCabType)?.icon} {cabTypes.find(c => c.key === shortCabType)?.label}
                           </div>
                         </div>
                       </div>
