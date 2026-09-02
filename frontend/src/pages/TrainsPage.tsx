@@ -173,7 +173,6 @@ export const TrainsPage: React.FC = () => {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [date, setDate] = useState('');
-  const [travelClass, setTravelClass] = useState('Sleeper (SL)');
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -321,22 +320,6 @@ export const TrainsPage: React.FC = () => {
                 className="w-full pl-12 pr-4 py-4 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-100 text-gray-900 font-bold transition-all text-sm"
               />
             </div>
-            
-            {/* Class */}
-            <div className="relative flex-1">
-              <select
-                value={travelClass}
-                onChange={e => setTravelClass(e.target.value)}
-                className="w-full px-4 py-4 bg-gray-50 border border-transparent rounded-2xl focus:bg-white focus:border-orange-400 focus:ring-4 focus:ring-orange-100 text-gray-900 font-bold transition-all text-sm appearance-none text-center"
-              >
-                <option>All Classes</option>
-                <option>Sleeper (SL)</option>
-                <option>AC 3 Tier (3A)</option>
-                <option>AC 2 Tier (2A)</option>
-                <option>First AC (1A)</option>
-                <option>AC Chair Car (CC)</option>
-              </select>
-            </div>
           </div>
 
           <button
@@ -382,9 +365,6 @@ export const TrainsPage: React.FC = () => {
                       <h3 className="font-black text-lg text-gray-900 flex items-center gap-2">
                         {train.name} <span className="text-sm font-semibold text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md border border-gray-200">{train.number}</span>
                       </h3>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs font-bold text-gray-500">{travelClass !== 'All Classes' ? travelClass : 'Multiple Classes'}</span>
-                      </div>
                     </div>
                   </div>
 
@@ -452,8 +432,6 @@ export const TrainsPage: React.FC = () => {
                       <p className={`text-sm font-black flex items-center gap-1.5 ${selectedTrain.statusColor}`}>
                         {selectedTrain.status}
                       </p>
-                      <span className="text-gray-300">•</span>
-                      <p className="text-sm font-bold text-gray-600">Travel Class: {travelClass !== 'All Classes' ? travelClass : 'SL'}</p>
                     </div>
                   </div>
                   
