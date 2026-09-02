@@ -702,8 +702,15 @@ export const PlanTripPage: React.FC = () => {
                 <div className="flex items-start gap-3">
                   <Calendar className="text-orange-500 flex-shrink-0 mt-0.5" size={18} />
                   <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Duration</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Duration & Start Date</p>
                     <p className="font-semibold text-gray-900 dark:text-white text-sm">{tripData.duration} Days · {tripData.pace}</p>
+                    {tripData.startDate ? (
+                      <p className="text-xs font-bold text-orange-600 dark:text-orange-400 mt-0.5 flex items-center gap-1">
+                        📅 Starts: {tripData.startDate}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-400 mt-0.5">Start date not set</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
