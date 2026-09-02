@@ -614,33 +614,6 @@ export const PlanTripPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* PNR / Flight Number */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-2 tracking-widest uppercase">
-                    {tripData.transportMode === 'Train' ? 'PNR Number' : 'Flight Number'}
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={tripData.transportMode === 'Train' ? tripData.pnrNumber : tripData.flightNumber}
-                      onChange={e => setTripData(p => tripData.transportMode === 'Train'
-                        ? { ...p, pnrNumber: e.target.value }
-                        : { ...p, flightNumber: e.target.value }
-                      )}
-                      placeholder={tripData.transportMode === 'Train' ? 'Enter 10-digit PNR number' : 'e.g. AI-401, 6E-123'}
-                      className="flex-1 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm font-mono"
-                      maxLength={tripData.transportMode === 'Train' ? 10 : 8}
-                    />
-                    <button
-                      type="button"
-                      disabled={detecting}
-                      onClick={handleDetectDetails}
-                      className="px-4 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
-                    >
-                      {detecting ? 'Detecting...' : 'Detect Details'}
-                    </button>
-                  </div>
-                </div>
               </div>
             )}
 
