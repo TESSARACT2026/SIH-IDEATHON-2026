@@ -33,7 +33,7 @@ const envSchema = z.object({
 
   // App
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  CORS_ORIGIN: z.string().transform(s => s.split(',').map(o => o.trim())).default('http://localhost:5173'),
   PORT: z.coerce.number().default(3001),
 });
 
