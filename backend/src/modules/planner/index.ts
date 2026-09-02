@@ -98,8 +98,12 @@ router.post('/generate', optionalAuth, async (req, res, next) => {
       // Ignore if holiday fetch fails
     }
 
+    const planResponse = { ...plan, plannerInput: input };
+
     const savedTrip = saveTrip
       ? await prisma.$transaction(async (tx) => {
+          const plannerInput = input as unknown as Prisma.InputJsonValue;
+          const planSnapshot = planResponse as unknown as Prisma.InputJsonValue;
           const trip = await tx.trip.create({
             data: {
               userId: req.user!.userId,
@@ -108,14 +112,16 @@ router.post('/generate', optionalAuth, async (req, res, next) => {
               startDate: tripStart,
               endDate,
               status: 'PLANNED',
-              itinerarySnapshot: plan as unknown as Prisma.InputJsonValue,
+              plannerInput,
+              itinerarySnapshot: planSnapshot,
             },
           });
 
           const itinerary = await tx.itinerary.create({
             data: {
               tripId: trip.id,
-              rawPlan: plan as unknown as Prisma.InputJsonValue,
+              plannerInput,
+              rawPlan: planSnapshot,
               validated: true,
             },
           });
@@ -140,7 +146,7 @@ router.post('/generate', optionalAuth, async (req, res, next) => {
         })
       : undefined;
 
-    res.json({ data: { ...plan, ...(savedTrip ? { savedTrip } : {}) } });
+    res.json({ data: { ...planResponse, ...(savedTrip ? { savedTrip } : {}) } });
   } catch (err) {
     next(err);
   }

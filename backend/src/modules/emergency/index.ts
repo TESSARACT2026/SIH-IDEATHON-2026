@@ -6,7 +6,7 @@ import { resolveDestinationId } from '../../shared/utils/idAliases.js';
 
 const router = Router();
 
-type EmergencyContact = {
+export type EmergencyContact = {
   category: string;
   label: string;
   phone: string;
@@ -157,6 +157,15 @@ const regionalContacts: Record<string, EmergencyContact[]> = {
   ],
 };
 
+export function emergencyContactBundle(destination?: { region: string | null } | null) {
+  const regional = destination?.region ? regionalContacts[destination.region] ?? [] : [];
+  return {
+    contacts: [...nationalContacts, ...regional],
+    regionalCount: regional.length,
+    lastVerified: '2026-08-31',
+  };
+}
+
 router.get('/', async (req, res, next) => {
   try {
     const query = querySchema.parse(req.query);
@@ -176,21 +185,18 @@ router.get('/', async (req, res, next) => {
       throw new AppError('Destination not found', 404, 'DESTINATION_NOT_FOUND');
     }
 
-    const contacts = [
-      ...nationalContacts,
-      ...(destination?.region ? regionalContacts[destination.region] ?? [] : []),
-    ];
+    const bundle = emergencyContactBundle(destination);
 
     res.json({
       data: {
         countryCode: 'IN',
         destination,
-        contacts,
-        lastVerified: '2026-08-31',
+        contacts: bundle.contacts,
+        lastVerified: bundle.lastVerified,
       },
       meta: {
-        count: contacts.length,
-        sources: Array.from(new Set(contacts.map((contact) => contact.sourceUrl))),
+        count: bundle.contacts.length,
+        sources: Array.from(new Set(bundle.contacts.map((contact) => contact.sourceUrl))),
       },
     });
   } catch (err) {

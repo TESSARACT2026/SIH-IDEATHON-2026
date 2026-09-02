@@ -12,36 +12,21 @@
 
 import { Router } from 'express';
 import { randomBytes } from 'crypto';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../shared/db/index.js';
 import { AppError } from '../../shared/middleware/errorHandler.js';
-import { requireAuth, optionalAuth } from '../../shared/middleware/auth.js';
+import { requireAuth } from '../../shared/middleware/auth.js';
 import { resolveDestinationId } from '../../shared/utils/idAliases.js';
 import { generateItinerary, type PlannerInput, type PlannerPreferences } from '../planner/engine.js';
 
 const router = Router();
 
-// In-memory store for group trips (in production, this would be in the DB)
-// Using a Map keyed by join code for simplicity
 type GroupParticipant = {
   name: string;
   preferences: PlannerPreferences;
   submittedAt: string;
 };
-
-type GroupTrip = {
-  id: string;
-  joinCode: string;
-  creatorId: string;
-  destinationId: string;
-  startDate: string;
-  days: number;
-  title: string;
-  participants: GroupParticipant[];
-  createdAt: string;
-};
-
-const groupTrips = new Map<string, GroupTrip>();
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -62,7 +47,7 @@ const joinGroupSchema = z.object({
     accessibilityCognitive: z.boolean().default(false),
     interests: z.array(z.string().max(50)).max(20).default([]),
     transportPreference: z.enum(['WALKING', 'PUBLIC_TRANSIT', 'CAB', 'OWN_VEHICLE', 'MIXED']).default('MIXED'),
-    walkingToleranceMinutes: z.number().int().min(5).max(240).default(30).optional(),
+    walkingToleranceMinutes: z.number().int().min(5).max(240).default(30),
   }).strict(),
 }).strict();
 
@@ -74,13 +59,35 @@ function generateJoinCode(): string {
   return randomBytes(4).toString('hex').toUpperCase(); // 8-char hex code
 }
 
+function normalizeJoinCode(code: string): string {
+  return code.toUpperCase();
+}
+
+async function generateUniqueJoinCode(): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const joinCode = generateJoinCode();
+    const existing = await prisma.groupSession.findUnique({ where: { joinCode }, select: { id: true } });
+    if (!existing) return joinCode;
+  }
+
+  throw new AppError('Unable to create a unique group join code', 500, 'GROUP_CODE_ERROR');
+}
+
+function toGroupParticipant(participant: { name: string; preferences: Prisma.JsonValue; submittedAt: Date }): GroupParticipant {
+  return {
+    name: participant.name,
+    preferences: participant.preferences as unknown as PlannerPreferences,
+    submittedAt: participant.submittedAt.toISOString(),
+  };
+}
+
 // ─── Blending Logic ─────────────────────────────────────────────────────────
 
 /**
  * Blends multiple participant preferences into a single constraint set.
  * Hard constraints: strictest value. Soft constraints: proportional blend.
  */
-function blendPreferences(participants: GroupParticipant[]): {
+export function blendPreferences(participants: GroupParticipant[]): {
   blended: PlannerPreferences;
   allocation: Record<string, number>;
   constraints: string[];
@@ -171,20 +178,17 @@ router.post('/', requireAuth, async (req, res, next) => {
     const destination = await prisma.destination.findUnique({ where: { id: destinationId } });
     if (!destination) throw new AppError('Destination not found', 404, 'NOT_FOUND');
 
-    const joinCode = generateJoinCode();
-    const group: GroupTrip = {
-      id: randomBytes(16).toString('hex'),
-      joinCode,
-      creatorId: req.user!.userId,
-      destinationId,
-      startDate: parsed.startDate,
-      days: parsed.days,
-      title: parsed.title,
-      participants: [],
-      createdAt: new Date().toISOString(),
-    };
-
-    groupTrips.set(joinCode, group);
+    const joinCode = await generateUniqueJoinCode();
+    const group = await prisma.groupSession.create({
+      data: {
+        joinCode,
+        creatorId: req.user!.userId,
+        destinationId,
+        startDate: new Date(parsed.startDate),
+        days: parsed.days,
+        title: parsed.title,
+      },
+    });
 
     res.status(201).json({
       data: {
@@ -193,7 +197,7 @@ router.post('/', requireAuth, async (req, res, next) => {
         title: group.title,
         destinationId,
         shareUrl: `/group/${joinCode}`,
-        createdAt: group.createdAt,
+        createdAt: group.createdAt.toISOString(),
       },
     });
   } catch (err) {
@@ -211,26 +215,30 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.post('/:code/join', async (req, res, next) => {
   try {
-    const { code } = codeParamSchema.parse(req.params);
+    const { code: rawCode } = codeParamSchema.parse(req.params);
+    const code = normalizeJoinCode(rawCode);
     const { name, preferences } = joinGroupSchema.parse(req.body);
 
-    const group = groupTrips.get(code);
+    const group = await prisma.groupSession.findUnique({ where: { joinCode: code }, select: { id: true } });
     if (!group) throw new AppError('Group trip not found', 404, 'NOT_FOUND');
 
-    if (group.participants.length >= 10) {
+    const participantCount = await prisma.groupParticipant.count({ where: { groupId: group.id } });
+    if (participantCount >= 10) {
       throw new AppError('Group is full (max 10 participants)', 400, 'GROUP_FULL');
     }
 
-    group.participants.push({
-      name,
-      preferences: preferences as PlannerPreferences,
-      submittedAt: new Date().toISOString(),
+    await prisma.groupParticipant.create({
+      data: {
+        groupId: group.id,
+        name,
+        preferences: preferences as unknown as Prisma.InputJsonValue,
+      },
     });
 
     res.status(201).json({
       data: {
         success: true,
-        participantCount: group.participants.length,
+        participantCount: participantCount + 1,
         message: `${name} joined the group trip`,
       },
     });
@@ -249,8 +257,12 @@ router.post('/:code/join', async (req, res, next) => {
 
 router.get('/:code', async (req, res, next) => {
   try {
-    const { code } = codeParamSchema.parse(req.params);
-    const group = groupTrips.get(code);
+    const { code: rawCode } = codeParamSchema.parse(req.params);
+    const code = normalizeJoinCode(rawCode);
+    const group = await prisma.groupSession.findUnique({
+      where: { joinCode: code },
+      include: { participants: { orderBy: { submittedAt: 'asc' } } },
+    });
     if (!group) throw new AppError('Group trip not found', 404, 'NOT_FOUND');
 
     res.json({
@@ -258,10 +270,10 @@ router.get('/:code', async (req, res, next) => {
         id: group.id,
         title: group.title,
         destinationId: group.destinationId,
-        startDate: group.startDate,
+        startDate: group.startDate.toISOString(),
         days: group.days,
         participantCount: group.participants.length,
-        participants: group.participants.map((p) => ({
+        participants: group.participants.map(toGroupParticipant).map((p) => ({
           name: p.name,
           interests: p.preferences.interests,
           pace: p.preferences.pace,
@@ -284,8 +296,12 @@ router.get('/:code', async (req, res, next) => {
 
 router.post('/:code/generate', async (req, res, next) => {
   try {
-    const { code } = codeParamSchema.parse(req.params);
-    const group = groupTrips.get(code);
+    const { code: rawCode } = codeParamSchema.parse(req.params);
+    const code = normalizeJoinCode(rawCode);
+    const group = await prisma.groupSession.findUnique({
+      where: { joinCode: code },
+      include: { participants: { orderBy: { submittedAt: 'asc' } } },
+    });
     if (!group) throw new AppError('Group trip not found', 404, 'NOT_FOUND');
 
     if (group.participants.length < 2) {
@@ -293,11 +309,12 @@ router.post('/:code/generate', async (req, res, next) => {
     }
 
     // Blend preferences deterministically
-    const { blended, allocation, constraints } = blendPreferences(group.participants);
+    const participants = group.participants.map(toGroupParticipant);
+    const { blended, allocation, constraints } = blendPreferences(participants);
 
     const input: PlannerInput = {
       destinationId: group.destinationId,
-      startDate: group.startDate,
+      startDate: group.startDate.toISOString(),
       days: group.days,
       preferences: blended,
     };

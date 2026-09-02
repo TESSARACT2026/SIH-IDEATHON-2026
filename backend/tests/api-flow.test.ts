@@ -10,6 +10,7 @@ const token = process.env.API_TEST_BEARER_TOKEN ?? '';
 const authHeader = `Bearer ${token}`;
 const tripTitlePrefix = 'E2E API Flow Trip';
 const authIt = token ? it : it.skip;
+const e2eDescribe = process.env.RUN_E2E_TESTS === '1' ? describe : describe.skip;
 
 let tripId = '';
 let shareToken = '';
@@ -32,7 +33,7 @@ async function cleanup(): Promise<void> {
   }
 }
 
-describe('E2E API flow', () => {
+e2eDescribe('E2E API flow', () => {
   beforeAll(async () => {
     const health = await request(BASE_URL).get('/api/health');
     expect(

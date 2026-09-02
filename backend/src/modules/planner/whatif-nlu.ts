@@ -17,7 +17,7 @@ type ConstraintDelta =
   | { type: 'weather_change'; payload: { condition: 'rain' | 'extreme_heat' | 'storm'; affectedDays?: number[] } }
   | { type: 'time_reduced'; payload: { newDayEnd?: string; reduceDays?: number } }
   | { type: 'crowd_increase'; payload: { strictFilter: boolean } }
-  | { type: 'budget_change'; payload: { maxBudgetPerPerson: number } };
+  | { type: 'budget_change'; payload: { maxBudgetPerPerson?: number; decreaseByPerPerson?: number } };
 
 const extractDeltaSchema = z.object({
   query: z.string().min(3).max(500),
@@ -25,18 +25,37 @@ const extractDeltaSchema = z.object({
 
 // ─── Keyword-based fallback ─────────────────────────────────────────────────
 
+function parseAmount(value: string) {
+  return parseInt(value.replace(/,/g, ''), 10);
+}
+
+function affectedDaysFromQuery(query: string) {
+  const days = new Set<number>();
+
+  for (const match of query.matchAll(/\bday\s*(\d{1,2})\b/g)) {
+    const day = parseInt(match[1], 10);
+    if (day >= 1 && day <= 14) days.add(day);
+  }
+
+  if (query.includes('today') || query.includes('aaj')) days.add(1);
+  if (query.includes('tomorrow') || query.includes('kal')) days.add(2);
+
+  return days.size > 0 ? Array.from(days).sort((a, b) => a - b) : undefined;
+}
+
 function keywordExtractDelta(query: string): ConstraintDelta {
   const q = query.toLowerCase();
+  const affectedDays = affectedDaysFromQuery(q);
 
   // Weather
   if (q.includes('rain') || q.includes('baarish') || q.includes('barish') || q.includes('monsoon')) {
-    return { type: 'weather_change', payload: { condition: 'rain' } };
+    return { type: 'weather_change', payload: { condition: 'rain', ...(affectedDays ? { affectedDays } : {}) } };
   }
   if (q.includes('heat') || q.includes('hot') || q.includes('garmi') || q.includes('sun')) {
-    return { type: 'weather_change', payload: { condition: 'extreme_heat' } };
+    return { type: 'weather_change', payload: { condition: 'extreme_heat', ...(affectedDays ? { affectedDays } : {}) } };
   }
   if (q.includes('storm') || q.includes('thunder') || q.includes('toofan')) {
-    return { type: 'weather_change', payload: { condition: 'storm' } };
+    return { type: 'weather_change', payload: { condition: 'storm', ...(affectedDays ? { affectedDays } : {}) } };
   }
 
   // Time
@@ -54,10 +73,14 @@ function keywordExtractDelta(query: string): ConstraintDelta {
   }
 
   // Budget
-  const budgetMatch = q.match(/(?:budget|reduce|cut|save|kam)[^₹\d]*[₹]?\s*(\d+)/i);
+  const budgetMatch = q.match(/(?:budget|reduce|cut|save|decrease|less|kam|under|within|max(?:imum)?)[^₹\d]*[₹]?\s*([\d,]+)/i);
   if (budgetMatch || q.includes('budget') || q.includes('cheap') || q.includes('sasta')) {
-    const amount = budgetMatch ? parseInt(budgetMatch[1]) : 500;
-    return { type: 'budget_change', payload: { maxBudgetPerPerson: amount } };
+    const amount = budgetMatch ? parseAmount(budgetMatch[1]) : 500;
+    const isDecrease = /\b(reduce|cut|save|decrease|less|kam|cheap|cheaper|sasta)\b/.test(q);
+    return {
+      type: 'budget_change',
+      payload: isDecrease ? { decreaseByPerPerson: amount } : { maxBudgetPerPerson: amount },
+    };
   }
 
   // Default to crowd if nothing matches
@@ -73,10 +96,11 @@ async function geminiExtractDelta(query: string): Promise<ConstraintDelta> {
 Given a "what if" query from a user, extract a structured constraint delta.
 Return ONLY a valid JSON object with one of these exact shapes:
 
-1. Weather: { "type": "weather_change", "payload": { "condition": "rain" | "extreme_heat" | "storm" } }
+1. Weather: { "type": "weather_change", "payload": { "condition": "rain" | "extreme_heat" | "storm", "affectedDays": [1, 2] } }
 2. Time: { "type": "time_reduced", "payload": { "newDayEnd": "HH:MM" } } or { "type": "time_reduced", "payload": { "reduceDays": N } }
 3. Crowd: { "type": "crowd_increase", "payload": { "strictFilter": true } }
-4. Budget: { "type": "budget_change", "payload": { "maxBudgetPerPerson": N } }
+4. Budget ceiling: { "type": "budget_change", "payload": { "maxBudgetPerPerson": N } }
+5. Budget decrease: { "type": "budget_change", "payload": { "decreaseByPerPerson": N } }
 
 Support Hindi, Hinglish, and English queries. Respond with ONLY the JSON, no explanation.`;
 

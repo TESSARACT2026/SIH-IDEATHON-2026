@@ -60,13 +60,16 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/knowledge/destinations/:id/attractions` | No | List destination attractions with filters. |
 | GET | `/api/v1/attractions/:id/facts` | No | Get attraction fact provenance. |
 | GET | `/api/v1/attractions/:id/alternatives` | No | Suggest similar same-destination attractions. |
+| GET | `/api/v1/attractions/:id/suitability` | No | Explain whether an attraction fits a requested time and constraints. |
 | GET | `/api/v1/live/weather` | No | Current weather from Open-Meteo. |
 | GET | `/api/v1/live/forecast` | No | Daily forecast range from Open-Meteo. |
 | GET | `/api/v1/live/route` | No | Distance and duration from OpenRouteService. |
 | POST | `/api/v1/planner/generate` | Optional | Generate an itinerary; with `saveTrip: true` and bearer auth, also save the trip and itinerary. |
 | POST | `/api/v1/nlu/extract` | No | Extract trip preferences from free text with Gemini or keyword fallback. |
+| POST | `/api/v1/nlu/extract-delta` | No | Extract a structured what-if replan delta from free text. |
 | POST | `/api/v1/nlu/narrate` | No | Generate itinerary narration with fact-marker validation. |
 | POST | `/api/v1/nlu/speech` | No | Generate spoken narration audio with Gemini TTS. |
+| POST | `/api/v1/nlu/voice-command` | Optional | Resolve a context-aware travel voice command. |
 | POST | `/api/v1/feedback` | Yes | Validate and queue feedback response for review. |
 | GET | `/api/v1/feedback/admin/review-queue` | Admin | List feedback awaiting review. |
 | PATCH | `/api/v1/feedback/admin/:id/review` | Admin | Resolve feedback and optionally update a fact's verification status. |
@@ -76,10 +79,13 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/favorites` | Yes | List current user's saved attractions. |
 | POST | `/api/v1/favorites` | Yes | Add an attraction favorite. |
 | DELETE | `/api/v1/favorites/:attractionId` | Yes | Remove an attraction favorite. |
+| DELETE | `/api/v1/favorites/destinations/:destinationId` | Yes | Remove a destination favorite. |
 | GET | `/api/v1/trips` | Yes | List current user's trips. |
 | POST | `/api/v1/trips` | Yes | Create a trip. |
 | GET | `/api/v1/trips/:id` | Yes | Get a trip owned by the current user. |
 | GET | `/api/v1/trips/:id/export` | Yes | Export a saved trip itinerary snapshot as PDF. |
+| GET | `/api/v1/trips/:id/offline-pack` | Yes | Download a saved trip offline survival pack as JSON. |
+| POST | `/api/v1/trips/:id/itinerary/replan` | Yes | Re-run deterministic planner with a what-if constraint delta. |
 | PATCH | `/api/v1/trips/:id` | Yes | Update trip metadata and sharing state. |
 | POST | `/api/v1/trips/:id/snapshot` | Yes | Save a frozen itinerary snapshot on a trip. |
 | DELETE | `/api/v1/trips/:id` | Yes | Delete a trip owned by the current user. |
@@ -94,6 +100,14 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/guide/attractions/:id` | No | Structured attraction guide with provenance, crowd, and sensitivity data. |
 | GET | `/api/v1/budget/destinations/:id` | No | Calculate destination ticket budget from verified/live price facts. |
 | POST | `/api/v1/budget/estimate` | No | Calculate ticket budget for selected attractions. |
+| GET | `/api/v1/budget/trips/:id/breakdown` | Yes | Calculate transparent saved-trip budget breakdown. |
+| GET | `/api/v1/scoring/trip-health/:id` | Yes | Calculate trip risk/health score for a saved trip. |
+| POST | `/api/v1/scoring/tourism-impact` | No | Compare popular and responsible route impact metrics. |
+| GET | `/api/v1/scoring/trip-trust/:id` | Yes | Aggregate itinerary fact trust into a trip-level score. |
+| POST | `/api/v1/groups` | Yes | Create a persisted group planning session. |
+| GET | `/api/v1/groups/:code` | No | Get group planning session status. |
+| POST | `/api/v1/groups/:code/join` | No | Submit participant preferences for a group plan. |
+| POST | `/api/v1/groups/:code/generate` | No | Generate an itinerary from blended group preferences. |
 | GET | `/api/v1/analytics/dashboard` | Yes | Platform counts and fact accuracy percentage. |
 | GET | `/api/v1/search` | No | Search destinations and attractions by text. |
 | GET | `/api/v1/nearby` | No | Find attractions near a coordinate. |
@@ -220,6 +234,8 @@ Notes:
 - `saveTrip` defaults to `false`. When `true`, the request must include a valid
   bearer token and the response includes `savedTrip.tripId` and
   `savedTrip.itineraryId`.
+- Saved generated trips persist the normalized planner input so later replans
+  keep the original preferences.
 
 ### NLU
 
@@ -232,6 +248,18 @@ Notes:
 ```
 
 `prompt` must be 5-1000 characters.
+
+`POST /api/v1/nlu/extract-delta`
+
+```json
+{
+  "query": "What if it rains tomorrow?"
+}
+```
+
+Returns a structured what-if delta accepted by
+`POST /api/v1/trips/:id/itinerary/replan`. Supported delta types are
+`weather_change`, `time_reduced`, `crowd_increase`, and `budget_change`.
 
 `POST /api/v1/nlu/narrate`
 
@@ -271,6 +299,26 @@ Notes:
 Returns binary audio (`audio/wav` by default). If Gemini TTS is unavailable, the
 route returns `503 AUDIO_UNAVAILABLE`.
 
+`POST /api/v1/nlu/voice-command`
+
+```json
+{
+  "utterance": "MargDarshak, mujhe abhi nearby kuch peaceful jagah chahiye.",
+  "locale": "hi-IN",
+  "context": {
+    "tripId": "00000000-0000-4000-8000-000000002001",
+    "lat": 20.2961,
+    "lon": 85.8245,
+    "remainingMinutes": 120
+  }
+}
+```
+
+Returns a deterministic intent, `spokenText`, context used, and either results
+or a next API action. Supported intents include nearby recommendations,
+itinerary readout, emergency help, offline-pack download, and what-if replans.
+Trip-specific voice commands require bearer auth and enforce trip ownership.
+
 ### Feedback
 
 `POST /api/v1/feedback`
@@ -280,6 +328,7 @@ route returns `503 AUDIO_UNAVAILABLE`.
   "entityId": "00000000-0000-4000-8000-000000003001",
   "entityType": "FACT",
   "feedbackType": "OUTDATED",
+  "reportType": "HOURS_INCORRECT",
   "comment": "The opening time has changed."
 }
 ```
@@ -288,9 +337,10 @@ Allowed values:
 
 - `entityType`: `ATTRACTION`, `FACT`, `CROWD_RECORD`
 - `feedbackType`: `INACCURATE`, `OUTDATED`, `OTHER`
+- `reportType`: optional structured report category: `CLOSED`, `PRICE_CHANGED`, `ACCESSIBILITY_INCORRECT`, `HOURS_INCORRECT`, `ROAD_BLOCKED`, `OVERCROWDED`, `FACILITY_UNAVAILABLE`, `OTHER`
 
-Feedback is stored with `PENDING` status for manual review. Submitting feedback
-does not automatically downgrade or rewrite trusted facts.
+Feedback is stored with `PENDING` status and its `reportType` for manual review.
+Submitting feedback does not automatically downgrade or rewrite trusted facts.
 
 `GET /api/v1/feedback/admin/review-queue?status=PENDING&limit=20`
 
@@ -385,19 +435,59 @@ Adding a duplicate favorite is safe; the backend uses an upsert.
   "itinerarySnapshot": {
     "destinationId": "00000000-0000-4000-8000-000000001001",
     "days": 3,
+    "plannerInput": {},
     "itineraryItems": []
   }
 }
 ```
 
+If `plannerInput` is present either beside `itinerarySnapshot` or inside it,
+the backend stores it for later replans.
+
 `GET /api/v1/trips/:id/export`
 
 Returns `application/pdf` for the current user's saved `itinerarySnapshot`.
+
+`GET /api/v1/trips/:id/offline-pack`
+
+Returns a JSON offline survival pack for the current user's saved
+`itinerarySnapshot`, including itinerary stops, trusted fact summaries,
+destination coordinates, emergency contacts, personal emergency contact,
+language phrases, warnings, alternatives, and last verified timestamps.
 
 `GET /api/v1/trips/share/:token/export`
 
 Returns the same PDF export for public shared trips. Export responses never
 include owner IDs, owner email, or share tokens inside the document.
+
+`POST /api/v1/trips/:id/itinerary/replan`
+
+```json
+{
+  "delta": {
+    "type": "weather_change",
+    "payload": {
+      "condition": "rain",
+      "affectedDays": [1]
+    }
+  }
+}
+```
+
+Supported delta types:
+
+- `weather_change`: `condition` is `rain`, `extreme_heat`, or `storm`; optional
+  `affectedDays` limits indoor substitutions to specific trip days.
+- `time_reduced`: accepts `newDayEnd` as `HH:MM` or `reduceDays`.
+- `crowd_increase`: accepts `strictFilter`.
+- `budget_change`: accepts `maxBudgetPerPerson` as an absolute per-person
+  ceiling, or `decreaseByPerPerson` to reduce the current itinerary budget.
+
+Replanning uses the persisted planner input from generated trips. Old/manual
+trips without planner memory fall back to moderate pace, mixed transport, and
+no accessibility/interests constraints.
+Each successful replan updates the trip snapshot and stores a new itinerary
+version.
 
 Trip `:id` params must be UUIDs. `destinationId` accepts UUIDs and legacy
 frontend destination slugs.
@@ -460,6 +550,109 @@ Budget totals only include `ticket_price` facts whose verification status is
 `VERIFIED` or `LIVE`. Community or unverified prices are returned as line items
 with warnings but excluded from the total.
 
+`GET /api/v1/budget/trips/:id/breakdown?travellerType=INDIAN&travellers=2`
+
+Returns a transparent saved-trip estimate broken into transportation, entry
+tickets, food, local experiences, and buffer. Entry tickets come from
+verified/live `ticket_price` facts frozen in the trip snapshot; the other
+categories are deterministic India travel estimates. The response also includes
+a ready `budgetReductionAction` for the existing what-if replan route.
+
+### Attraction Suitability
+
+`GET /api/v1/attractions/konark-sun-temple/suitability?time=14:00&accessibilityWheelchair=true&walkingToleranceMinutes=30`
+
+- `time`: required `HH:MM`.
+- `date`: optional ISO date-time; when present, forecast weather is checked for that day.
+- `accessibilityWheelchair`, `accessibilityVision`, `accessibilityHearing`,
+  `accessibilityCognitive`: optional booleans.
+- `walkingToleranceMinutes`: optional 5-240 minute tolerance.
+- `weatherCondition` and `maxTempC`: optional explicit weather override for
+  deterministic simulations/tests.
+
+Returns `recommended`, deterministic reasons including "why not" constraints,
+weather metadata, and suitable alternatives when the place is not recommended.
+
+### Scoring
+
+`GET /api/v1/scoring/trip-health/:id`
+
+Requires auth. Computes weather, crowd, transport/routing,
+closure/sensitivity, accessibility, emergency-readiness, and data-quality
+sub-scores for the current user's saved trip. The response includes
+`mitigation.riskCrossed`, `mitigation.shouldReplan`, and deterministic action
+objects; weather, crowd, and transport actions include a ready
+`POST /api/v1/trips/:id/itinerary/replan` delta.
+
+`POST /api/v1/scoring/tourism-impact`
+
+```json
+{
+  "destinationId": "bhubaneswar-odisha",
+  "startDate": "2026-09-03T09:00:00.000Z",
+  "days": 2,
+  "preferences": {
+    "pace": "MODERATE",
+    "accessibilityWheelchair": false,
+    "accessibilityVision": false,
+    "accessibilityHearing": false,
+    "accessibilityCognitive": false,
+    "interests": ["Heritage"],
+    "transportPreference": "MIXED"
+  }
+}
+```
+
+Returns popular and responsible route plans with crowd pressure, local-business
+exposure, travel-distance, environmental sensitivity, cultural sensitivity, and
+overall impact-score metrics.
+
+`GET /api/v1/scoring/trip-trust/:id`
+
+Requires auth. Aggregates fact verification status, freshness, and unresolved
+conflicts into a trip-level trust score.
+
+### Groups
+
+`POST /api/v1/groups`
+
+```json
+{
+  "destinationId": "bhubaneswar-odisha",
+  "startDate": "2026-09-03T09:00:00.000Z",
+  "days": 2,
+  "title": "Family Trip"
+}
+```
+
+Creates a persisted group planning session and returns a join code.
+
+`POST /api/v1/groups/:code/join`
+
+```json
+{
+  "name": "Asha",
+  "preferences": {
+    "pace": "RELAXED",
+    "accessibilityWheelchair": false,
+    "accessibilityVision": false,
+    "accessibilityHearing": false,
+    "accessibilityCognitive": false,
+    "interests": ["Heritage", "Local Food & Markets"],
+    "transportPreference": "MIXED",
+    "walkingToleranceMinutes": 30
+  }
+}
+```
+
+`GET /api/v1/groups/:code`
+
+Returns group status and submitted participant summaries.
+
+`POST /api/v1/groups/:code/generate`
+
+Generates an itinerary from persisted participant preferences.
+
 ### Search
 
 `GET /api/v1/search?q=temple&type=all&limit=10`
@@ -491,4 +684,3 @@ with warnings but excluded from the total.
 ## Current Gaps
 
 - Backend auth endpoints documented previously do not exist; use Supabase auth.
-- No remaining backend feature gaps are currently documented here.
