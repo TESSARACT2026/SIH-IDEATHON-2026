@@ -4,6 +4,7 @@ import { Calendar, MapPin, Zap, Save, Train, Plane, Car, X, CheckCircle } from '
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
 import { tripsApi } from '../api/services/tripsApi';
+import { DEFAULT_DESTINATIONS } from '../api/services/knowledgeApi';
 import { STATIONS } from '../data/trainStations';
 
 // Airports
@@ -34,9 +35,6 @@ const AIRPORTS = [
   { name: 'Jammu Airport', code: 'IXJ', city: 'Jammu' },
   { name: 'Srinagar Airport', code: 'SXR', city: 'Srinagar' },
 ];
-
-const TRAIN_CLASSES = ['1A – First AC', '2A – Second AC', '3A – Third AC', 'SL – Sleeper', 'CC – Chair Car', 'EC – Executive', '2S – Second Sitting'];
-const FLIGHT_CLASSES = ['Economy', 'Premium Economy', 'Business', 'First Class'];
 
 interface StationInputProps {
   label: string;
@@ -129,7 +127,6 @@ export const PlanTripPage: React.FC = () => {
     duration: '3',
     pace: 'Moderate',
     transportMode: 'Optimized Mixed',
-    travelClass: '',
     pnrNumber: '',
     flightNumber: '',
     interests: [] as string[],
@@ -167,7 +164,6 @@ export const PlanTripPage: React.FC = () => {
           from: 'New Delhi (NDLS)',
           to: 'Bhubaneswar (BBS)',
           startDate: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
-          travelClass: '3A – Third AC',
         }));
       } else {
         setTripData(p => ({
@@ -175,7 +171,6 @@ export const PlanTripPage: React.FC = () => {
           from: 'New Delhi (DEL)',
           to: 'Mumbai (BOM)',
           startDate: new Date(Date.now() + 86400000 * 4).toISOString().split('T')[0],
-          travelClass: 'Economy',
         }));
       }
     }, 1200);
@@ -195,9 +190,6 @@ export const PlanTripPage: React.FC = () => {
     { id: 'Optimized Mixed', label: 'Optimized Mixed', icon: <Zap size={16} /> },
   ];
 
-  const classes = tripData.transportMode === 'Flight' ? FLIGHT_CLASSES :
-    tripData.transportMode === 'Train' ? TRAIN_CLASSES : [];
-
   const handleSaveDraft = () => {
     if (!tripData.from || !tripData.to) {
       alert('Please fill in From and To locations.');
@@ -213,7 +205,6 @@ export const PlanTripPage: React.FC = () => {
       duration: tripData.duration,
       pace: tripData.pace,
       transportMode: tripData.transportMode,
-      travelClass: tripData.travelClass,
       pnrNumber: tripData.pnrNumber,
       flightNumber: tripData.flightNumber,
       interests: tripData.interests,
@@ -270,7 +261,6 @@ export const PlanTripPage: React.FC = () => {
           duration: tripData.duration,
           pace: tripData.pace,
           transportMode: tripData.transportMode,
-          travelClass: tripData.travelClass,
           pnrNumber: tripData.pnrNumber,
           flightNumber: tripData.flightNumber,
           interests: tripData.interests,
@@ -294,7 +284,6 @@ export const PlanTripPage: React.FC = () => {
         duration: tripData.duration,
         pace: tripData.pace,
         transportMode: tripData.transportMode,
-        travelClass: tripData.travelClass,
         interests: tripData.interests,
         status: 'PLANNED',
         createdAt: new Date().toISOString(),
@@ -326,7 +315,7 @@ export const PlanTripPage: React.FC = () => {
                 {transportModes.map(mode => (
                   <button
                     key={mode.id}
-                    onClick={() => setTripData(p => ({ ...p, transportMode: mode.id, travelClass: '', pnrNumber: '', flightNumber: '' }))}
+                    onClick={() => setTripData(p => ({ ...p, transportMode: mode.id, pnrNumber: '', flightNumber: '' }))}
                     className={`flex flex-col items-center gap-2 py-3 rounded-xl border text-xs font-bold transition-all ${
                       tripData.transportMode === mode.id
                         ? 'bg-orange-500 text-white border-orange-500 shadow-md scale-105'
@@ -368,32 +357,6 @@ export const PlanTripPage: React.FC = () => {
                     className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                   />
                 </div>
-              </div>
-            )}
-
-            {/* Travel Class + PNR/Flight Number */}
-            {(tripData.transportMode === 'Train' || tripData.transportMode === 'Flight') && (
-              <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
-                {/* Travel Class */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 mb-3 tracking-widest uppercase">Travel Class</label>
-                  <div className="flex flex-wrap gap-2">
-                    {classes.map(cls => (
-                      <button
-                        key={cls}
-                        onClick={() => setTripData(p => ({ ...p, travelClass: cls }))}
-                        className={`px-3 py-2 rounded-lg border text-xs font-semibold transition-all ${
-                          tripData.travelClass === cls
-                            ? 'bg-orange-500 text-white border-orange-500'
-                            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-orange-400'
-                        }`}
-                      >
-                        {cls}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
               </div>
             )}
 
@@ -498,7 +461,7 @@ export const PlanTripPage: React.FC = () => {
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">Transport</p>
                     <p className="font-semibold text-gray-900 dark:text-white text-sm">
-                      {tripData.transportMode}{tripData.travelClass ? ` · ${tripData.travelClass.split('–')[0].trim()}` : ''}
+                      {tripData.transportMode}
                     </p>
                   </div>
                 </div>
