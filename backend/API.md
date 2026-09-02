@@ -85,6 +85,10 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/trips/:id` | Yes | Get a trip owned by the current user. |
 | GET | `/api/v1/trips/:id/export` | Yes | Export a saved trip itinerary snapshot as PDF. |
 | GET | `/api/v1/trips/:id/offline-pack` | Yes | Download a saved trip offline survival pack as JSON. |
+| GET | `/api/v1/trips/:id/hotel` | Yes | Get the selected hotel snapshot for a trip. |
+| PUT | `/api/v1/trips/:id/hotel` | Yes | Save/replace a selected hotel snapshot on a trip. |
+| DELETE | `/api/v1/trips/:id/hotel` | Yes | Remove the selected hotel snapshot from a trip. |
+| GET | `/api/v1/trips/:id/hotels/recommendations` | Yes | Search hotels around the trip destination and rank by itinerary fit. |
 | POST | `/api/v1/trips/:id/itinerary/replan` | Yes | Re-run deterministic planner with a what-if constraint delta. |
 | PATCH | `/api/v1/trips/:id` | Yes | Update trip metadata and sharing state. |
 | POST | `/api/v1/trips/:id/snapshot` | Yes | Save a frozen itinerary snapshot on a trip. |
@@ -101,6 +105,11 @@ in the comma-separated `ADMIN_EMAILS` environment variable.
 | GET | `/api/v1/budget/destinations/:id` | No | Calculate destination ticket budget from verified/live price facts. |
 | POST | `/api/v1/budget/estimate` | No | Calculate ticket budget for selected attractions. |
 | GET | `/api/v1/budget/trips/:id/breakdown` | Yes | Calculate transparent saved-trip budget breakdown. |
+| GET | `/api/v1/hotels/providers` | No | Inspect hotel provider readiness and missing API-key requirements. |
+| GET | `/api/v1/hotels/search` | No | Trusted hotel discovery through Geoapify or OpenStreetMap/Overpass; never returns fake prices. |
+| GET | `/api/v1/hotels/offers` | No | Live Staying API hotel offers when enough provider mapping is supplied. |
+| GET | `/api/v1/hotels/booking-link` | No | Validate an external hotel booking URL against the safe provider allow-list. |
+| GET | `/api/v1/hotels/:id` | No | Trusted hotel details by provider-backed hotel ID. |
 | GET | `/api/v1/scoring/trip-health/:id` | Yes | Calculate trip risk/health score for a saved trip. |
 | POST | `/api/v1/scoring/tourism-impact` | No | Compare popular and responsible route impact metrics. |
 | GET | `/api/v1/scoring/trip-trust/:id` | Yes | Aggregate itinerary fact trust into a trip-level score. |
@@ -196,7 +205,138 @@ Returns one daily forecast card per available date in the inclusive range.
 `GET /api/v1/live/route?startLat=20.2961&startLon=85.8245&endLat=20.27&endLon=85.84&profile=driving-car`
 
 `profile` defaults to `driving-car`; allowed values are `driving-car` and
-`foot-walking`.
+`foot-walking`. The response includes distance, duration, route geometry, and
+`source`. If routing fails, the backend returns `FALLBACK_STRAIGHT_LINE`
+geometry instead of failing the whole request.
+
+### Hotels
+
+Hotel discovery is live-provider backed. It uses Geoapify Places when
+`GEOAPIFY_API_KEY` is configured, then OpenStreetMap/Overpass as a controlled
+fallback. Hotel discovery never returns fabricated hotel prices or live
+availability.
+
+`GET /api/v1/hotels/providers`
+
+Returns configured/implemented status for Geoapify, OpenStreetMap/Overpass,
+Staying API, and Booking.com Demand API placeholders.
+
+`GET /api/v1/hotels/search?destinationId=bhubaneswar-odisha&checkIn=2026-09-05&checkOut=2026-09-08`
+
+Accepted query params:
+
+- `destinationId`: destination UUID or slug; required unless `lat` and `lon`
+  are provided
+- `lat`, `lon`: optional coordinate search pair
+- `radiusKm`: `0.1..50`, default `5`
+- `checkIn`, `checkOut`: optional `YYYY-MM-DD` date range
+- `adults`: `1..10`, default `2`
+- `rooms`: `1..5`, default `1`
+- `priceBand`: `BUDGET`, `MODERATE`, or `PREMIUM`
+- `amenities`: optional comma-separated desired amenities
+- `type`: `hotel`, `guest_house`, `hostel`, `motel`, or `apartment`
+- `wheelchairAccessible`, `wifi`, `parking`: `true` or `false`
+- `sort`: `DISTANCE`, `TRUST`, or `RECOMMENDED`
+- `limit`: `1..50`, default `20`
+
+When no discovery provider returns usable data, the response is still explicit:
+
+```json
+{
+  "data": {
+    "hotels": [],
+    "unavailable": {
+      "code": "HOTEL_DISCOVERY_TEMPORARILY_UNAVAILABLE",
+      "message": "No hotel provider returned usable data for this request. Please try a different location or retry later.",
+      "action": "RETRY_LATER"
+    },
+    "providerStatus": {}
+  }
+}
+```
+
+Successful hotel search responses include provider-backed hotel IDs. Use those
+IDs with `GET /api/v1/hotels/:id`.
+
+Example hotel item shape:
+
+```json
+{
+  "id": "geoapify:51...",
+  "provider": "GEOAPIFY",
+  "providerHotelId": "51...",
+  "name": "Hotel Pal Heights",
+  "latitude": 20.2984865,
+  "longitude": 85.8229954,
+  "distanceKm": 0.31,
+  "address": "Hotel Pal Heights, Bhubaneswar, Odisha, India",
+  "categories": ["accommodation", "accommodation.hotel"],
+  "amenities": ["wifi"],
+  "phone": null,
+  "website": null,
+  "starRating": null,
+  "wheelchairAccessible": null,
+  "pricing": {
+    "available": false,
+    "message": "Discovery providers do not prove live room prices. Use /api/v1/hotels/offers after an offers provider is configured."
+  },
+  "trust": {
+    "status": "SOURCE_BACKED",
+    "confidence": 0.82,
+    "warnings": ["Availability and price are not verified by discovery data."],
+    "summary": {
+      "label": "MEDIUM",
+      "score": 0.73,
+      "sourceTier": "PROVIDER_PLACE_DATA",
+      "fieldCompleteness": 0.43,
+      "freshness": {
+        "status": "FRESH",
+        "score": 1,
+        "fetchedAt": "2026-09-02T10:00:00.000Z"
+      },
+      "evidenceCount": 4,
+      "missingFields": ["phone", "website", "starRating", "wheelchairAccessible"]
+    }
+  }
+}
+```
+
+`GET /api/v1/hotels/offers?hotelId=staying:booking:hotel-123&checkIn=2026-09-05&checkOut=2026-09-08`
+
+Uses the Staying API when `STAYING_API_KEY` is configured. Supported offer
+lookups:
+
+- Direct listing price: `hotelId=staying:<platform>:<listingId>` or
+  `platform` + `providerHotelId`
+- Price compare: `name` and/or `location`, or `googleHotelId`
+
+If the frontend sends only a Geoapify/OSM discovery ID, the backend returns
+`HOTEL_OFFERS_MAPPING_REQUIRED` instead of guessing prices.
+
+Offer responses include total/nightly amounts, taxes/fees when supplied,
+nights, rooms, adults, source attribution, and a sanitized booking URL when the
+provider URL is on the safe allow-list.
+
+`GET /api/v1/hotels/booking-link?url=https://www.booking.com/hotel/in/example.html`
+
+Returns `{ allowed: true, url }` only for HTTPS URLs from approved hotel
+provider domains. It does not create or confirm bookings.
+
+`GET /api/v1/hotels/:id`
+
+Accepts provider-backed IDs returned by hotel search:
+
+- `geoapify:<place_id>`: fetched from Geoapify Place Details when
+  `GEOAPIFY_API_KEY` is configured
+- `osm:node/<id>`, `osm:way/<id>`, `osm:relation/<id>`: fetched from
+  OpenStreetMap/Overpass
+
+Details responses remain source-backed and still do not prove live room price
+or availability.
+
+Unsupported IDs return `400 INVALID_HOTEL_ID`. Provider failures return
+`502 HOTEL_DETAILS_PROVIDER_ERROR`. Missing Geoapify key for a Geoapify detail
+lookup returns `503 HOTEL_DETAILS_NOT_CONFIGURED`.
 
 ### Planner
 
@@ -453,7 +593,44 @@ Returns `application/pdf` for the current user's saved `itinerarySnapshot`.
 Returns a JSON offline survival pack for the current user's saved
 `itinerarySnapshot`, including itinerary stops, trusted fact summaries,
 destination coordinates, emergency contacts, personal emergency contact,
-language phrases, warnings, alternatives, and last verified timestamps.
+selected hotel snapshot, route-segment geometry hints, language phrases,
+warnings, alternatives, and last verified timestamps.
+
+`GET /api/v1/trips/:id/hotel`
+
+Returns the selected hotel snapshot saved on the trip, or `null`.
+
+`PUT /api/v1/trips/:id/hotel`
+
+```json
+{
+  "hotel": {
+    "id": "staying:booking:hotel-123",
+    "provider": "STAYING",
+    "providerHotelId": "hotel-123",
+    "name": "Hotel Utkal",
+    "latitude": 20.297,
+    "longitude": 85.825,
+    "pricing": { "available": true, "totalAmount": 3600, "currency": "INR" }
+  },
+  "offer": {
+    "totalAmount": 3600,
+    "currency": "INR",
+    "bookingUrl": "https://www.booking.com/hotel/in/utkal.html"
+  }
+}
+```
+
+Saves/replaces `itinerarySnapshot.selectedHotel`. No fake price is created.
+
+`DELETE /api/v1/trips/:id/hotel`
+
+Removes `itinerarySnapshot.selectedHotel`.
+
+`GET /api/v1/trips/:id/hotels/recommendations`
+
+Runs hotel discovery around the trip destination and ranks results by distance
+from itinerary stops, hotel trust, accessibility context, and budget context.
 
 `GET /api/v1/trips/share/:token/export`
 
@@ -553,10 +730,12 @@ with warnings but excluded from the total.
 `GET /api/v1/budget/trips/:id/breakdown?travellerType=INDIAN&travellers=2`
 
 Returns a transparent saved-trip estimate broken into transportation, entry
-tickets, food, local experiences, and buffer. Entry tickets come from
-verified/live `ticket_price` facts frozen in the trip snapshot; the other
-categories are deterministic India travel estimates. The response also includes
-a ready `budgetReductionAction` for the existing what-if replan route.
+tickets, accommodation when a selected hotel exists, food, local experiences,
+and buffer. Entry tickets come from verified/live `ticket_price` facts frozen in
+the trip snapshot. Accommodation uses only saved selected-hotel offer/pricing;
+if no live/saved price exists, it is shown as unavailable instead of guessed.
+The response also includes a ready `budgetReductionAction` for the existing
+what-if replan route.
 
 ### Attraction Suitability
 

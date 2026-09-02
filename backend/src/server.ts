@@ -102,6 +102,7 @@ import crowdRouter from './modules/crowd/index.js';
 import emergencyRouter from './modules/emergency/index.js';
 import guideRouter from './modules/guide/index.js';
 import budgetRouter from './modules/budget/index.js';
+import hotelsRouter from './modules/hotels/index.js';
 import replanRouter from './modules/planner/replan.js';
 import whatifNluRouter from './modules/planner/whatif-nlu.js';
 import suitabilityRouter from './modules/attractions/suitability.js';
@@ -129,6 +130,7 @@ app.use('/api/v1/crowd', crowdRouter);
 app.use('/api/v1/emergency', emergencyRouter);
 app.use('/api/v1/guide', guideRouter);
 app.use('/api/v1/budget', budgetRouter);
+app.use('/api/v1/hotels', hotelsRouter);
 
 // ─── Batch 2: Advanced Differentiator Features ─────────────────────────────
 app.use('/api/v1/trips', replanRouter);                     // Feature 1: What-If Replan

@@ -24,6 +24,13 @@ const envSchema = z.object({
   // Routing
   ROUTING_API_KEY: z.string().min(1).default('mock-routing-api-key-dev'),
 
+  // Hotels (optional until hotel provider phases are wired)
+  GEOAPIFY_API_KEY: z.string().default(''),
+  STAYING_API_KEY: z.string().default(process.env.STAYINGAPI_KEY ?? ''),
+  STAYING_API_BASE_URL: z.string().url().default('https://api.stayingapi.com/v1'),
+  BOOKING_DEMAND_API_KEY: z.string().default(''),
+  BOOKING_DEMAND_AFFILIATE_ID: z.string().default(''),
+
   // Auth
   JWT_SECRET: z.string().min(16),
   ACCESS_TOKEN_EXPIRY: z.string().default('15m'),

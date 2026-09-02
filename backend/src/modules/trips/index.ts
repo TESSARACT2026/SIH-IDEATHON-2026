@@ -8,6 +8,10 @@ import { AppError } from '../../shared/middleware/errorHandler.js';
 import { globalLimiter } from '../../shared/middleware/rateLimiter.js';
 import { resolveDestinationId } from '../../shared/utils/idAliases.js';
 import { emergencyContactBundle } from '../emergency/index.js';
+import { rankHotelsForTrip, searchHotels } from '../hotels/discovery.js';
+import { hotelSearchQuerySchema, saveTripHotelSchema } from '../hotels/schemas.js';
+import { selectedHotelFromSnapshot, withSelectedHotel, withoutSelectedHotel } from '../hotels/selection.js';
+import { straightLineRoute } from '../live-data/routing.js';
 
 const router = Router();
 
@@ -401,11 +405,13 @@ export function buildOfflinePack(trip: OfflinePackTrip) {
     },
     destination: trip.destination,
     itinerary,
+    selectedHotel: selectedHotelFromSnapshot(trip.itinerarySnapshot),
     mapHints: {
       destinationCenter: {
         latitude: trip.destination.latitude,
         longitude: trip.destination.longitude,
       },
+      selectedHotel: selectedHotelFromSnapshot(trip.itinerarySnapshot),
       stops: itinerary.map((item) => ({
         name: item.attraction.name,
         latitude: item.attraction.latitude,
@@ -415,6 +421,7 @@ export function buildOfflinePack(trip: OfflinePackTrip) {
         from: itinerary[index].attraction.name,
         to: item.attraction.name,
         estimatedMinutes: item.travelBufferMinutesBefore,
+        ...routeSegmentGeometry(itinerary[index].attraction, item.attraction),
       })),
     },
     importantFacts,
@@ -438,6 +445,28 @@ export function buildOfflinePack(trip: OfflinePackTrip) {
       lastVerifiedTimestamps: Array.from(new Set(importantFacts.map((fact) => fact.lastChecked).filter(Boolean))),
       emergencyLastVerified: emergency.lastVerified,
     },
+  };
+}
+
+function routeSegmentGeometry(
+  from: { latitude: number | null; longitude: number | null },
+  to: { latitude: number | null; longitude: number | null },
+) {
+  if (
+    typeof from.latitude !== 'number' ||
+    typeof from.longitude !== 'number' ||
+    typeof to.latitude !== 'number' ||
+    typeof to.longitude !== 'number'
+  ) {
+    return { geometry: null, source: 'MISSING_COORDINATES' };
+  }
+
+  const route = straightLineRoute(from.latitude, from.longitude, to.latitude, to.longitude);
+  return {
+    distanceMeters: route.distance_meters,
+    durationSeconds: route.duration_seconds,
+    geometry: route.geometry,
+    source: route.source,
   };
 }
 
@@ -606,12 +635,143 @@ router.get('/', requireAuth, async (req, res, next) => {
         isPublic: trip.isPublic,
         shareToken: trip.isPublic ? trip.shareToken : null, // only expose token if public
         hasSnapshot: trip.itinerarySnapshot !== null,
+        hasSelectedHotel: selectedHotelFromSnapshot(trip.itinerarySnapshot) !== null,
         hasItinerary: trip.itineraries.length > 0,
         createdAt: trip.createdAt.toISOString(),
         updatedAt: trip.updatedAt.toISOString(),
       })),
     });
   } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/hotel', requireAuth, async (req, res, next) => {
+  try {
+    const { id } = uuidParamSchema.parse(req.params);
+    const trip = await prisma.trip.findUnique({ where: { id }, select: { userId: true, itinerarySnapshot: true } });
+    if (!trip || trip.userId !== req.user!.userId) throw new AppError('Trip not found', 404, 'NOT_FOUND');
+    res.json({ data: { selectedHotel: selectedHotelFromSnapshot(trip.itinerarySnapshot) } });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid trip hotel request', details: err.flatten().fieldErrors } });
+      return;
+    }
+    next(err);
+  }
+});
+
+router.put('/:id/hotel', requireAuth, async (req, res, next) => {
+  try {
+    const { id } = uuidParamSchema.parse(req.params);
+    const { hotel, offer } = saveTripHotelSchema.parse(req.body);
+    const existing = await prisma.trip.findUnique({ where: { id }, select: { userId: true, itinerarySnapshot: true } });
+    if (!existing || existing.userId !== req.user!.userId) throw new AppError('Trip not found', 404, 'NOT_FOUND');
+
+    const trip = await prisma.trip.update({
+      where: { id },
+      data: {
+        itinerarySnapshot: withSelectedHotel(
+          existing.itinerarySnapshot,
+          hotel,
+          offer,
+        ) as Prisma.InputJsonValue,
+      },
+    });
+
+    res.json({
+      data: {
+        id: trip.id,
+        selectedHotel: selectedHotelFromSnapshot(trip.itinerarySnapshot),
+        updatedAt: trip.updatedAt.toISOString(),
+      },
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid trip hotel payload', details: err.flatten().fieldErrors } });
+      return;
+    }
+    next(err);
+  }
+});
+
+router.delete('/:id/hotel', requireAuth, async (req, res, next) => {
+  try {
+    const { id } = uuidParamSchema.parse(req.params);
+    const existing = await prisma.trip.findUnique({ where: { id }, select: { userId: true, itinerarySnapshot: true } });
+    if (!existing || existing.userId !== req.user!.userId) throw new AppError('Trip not found', 404, 'NOT_FOUND');
+
+    const trip = await prisma.trip.update({
+      where: { id },
+      data: { itinerarySnapshot: withoutSelectedHotel(existing.itinerarySnapshot) as Prisma.InputJsonValue },
+    });
+
+    res.json({ data: { id: trip.id, selectedHotel: null, updatedAt: trip.updatedAt.toISOString() } });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid trip hotel request', details: err.flatten().fieldErrors } });
+      return;
+    }
+    next(err);
+  }
+});
+
+router.get('/:id/hotels/recommendations', requireAuth, async (req, res, next) => {
+  try {
+    const { id } = uuidParamSchema.parse(req.params);
+    const trip = await prisma.trip.findUnique({
+      where: { id },
+      include: {
+        destination: { select: { id: true, name: true, region: true, country: true, latitude: true, longitude: true } },
+        user: { select: { preferences: { select: { accessibilityMobility: true, budgetBand: true } } } },
+        itineraries: {
+          orderBy: { generatedAt: 'desc' },
+          take: 1,
+          include: {
+            items: {
+              orderBy: [{ dayNumber: 'asc' }, { sequence: 'asc' }],
+              include: { attraction: { select: { name: true, latitude: true, longitude: true } } },
+            },
+          },
+        },
+      },
+    });
+    if (!trip || trip.userId !== req.user!.userId) throw new AppError('Trip not found', 404, 'NOT_FOUND');
+
+    const query = hotelSearchQuerySchema.parse({
+      ...req.query,
+      lat: trip.destination.latitude,
+      lon: trip.destination.longitude,
+      sort: req.query.sort ?? 'RECOMMENDED',
+    });
+    const response = await searchHotels(query);
+    const itineraryStops = trip.itineraries[0]?.items.map((item) => ({
+      name: item.attraction?.name,
+      latitude: item.attraction?.latitude ?? null,
+      longitude: item.attraction?.longitude ?? null,
+    })) ?? [];
+    const fallbackStops = itineraryStops.length ? itineraryStops : [{
+      name: trip.destination.name,
+      latitude: trip.destination.latitude,
+      longitude: trip.destination.longitude,
+    }];
+
+    res.json({
+      data: {
+        ...response.data,
+        hotels: rankHotelsForTrip(response.data.hotels, fallbackStops, {
+          accessibilityWheelchair: trip.user.preferences?.accessibilityMobility,
+          budgetBand: trip.user.preferences?.budgetBand,
+        }),
+        trip: { id: trip.id, destination: trip.destination },
+      },
+      meta: response.meta,
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid trip hotel recommendation request', details: err.flatten().fieldErrors } });
+      return;
+    }
     next(err);
   }
 });
@@ -654,6 +814,7 @@ router.get('/:id', requireAuth, async (req, res, next) => {
         startDate: trip.startDate.toISOString(),
         endDate: trip.endDate.toISOString(),
         shareToken: trip.isPublic ? trip.shareToken : null,
+        selectedHotel: selectedHotelFromSnapshot(trip.itinerarySnapshot),
       },
     });
   } catch (err) {
