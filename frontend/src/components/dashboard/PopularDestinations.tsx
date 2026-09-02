@@ -236,16 +236,16 @@ export const PopularDestinations: React.FC<PopularDestinationsProps> = ({
   });
   const liveDestinations = apiDestinations.length > 0
     ? apiDestinations.map((destination, index) => {
-        const visual = getDestinationVisual(destination.name, index);
-        return {
-          id: destination.id,
-          name: destination.name,
-          state: destination.region || destination.country,
-          rating: visual.rating,
-          reviews: knowledgeApi.isUsingFallbackData() ? 'Demo' : visual.reviews,
-          image: visual.image,
-        };
-      })
+      const visual = getDestinationVisual(destination.name, index);
+      return {
+        id: destination.id,
+        name: destination.name,
+        state: destination.region || destination.country,
+        rating: visual.rating,
+        reviews: knowledgeApi.isUsingFallbackData() ? 'Demo' : visual.reviews,
+        image: visual.image,
+      };
+    })
     : destinations;
   const visible = 4;
   const totalPages = Math.ceil(liveDestinations.length / visible);
